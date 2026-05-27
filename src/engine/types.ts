@@ -51,6 +51,8 @@ export interface CareerTotals {
   championships: number;
   mvps: number;
   buzzerBeaters: number;
+  allStarSelections: number;   // times named to the All-Star Starting 5
+  rookieOfYear: boolean;       // won Rookie of the Year (once, in year 1)
 }
 
 export interface Player {
@@ -99,10 +101,12 @@ export interface Team {
   city: string;
   name: string;
   abbr: string;
+  primary: string;         // team primary color (hex)
+  secondary: string;       // team secondary color (hex)
   conference: Conference;
   division: string;
   market: MarketTier;
-  marketValue: number;     // 2 / 5 / 8
+  marketValue: number;     // 1 / 2 / 3 (Regular / Large / Huge)
   randomValue: number;     // 8-12, rerolled each offseason
   maxPoints: number;       // marketValue + randomValue (the cap)
   starIds: string[];       // exactly 3
@@ -128,16 +132,41 @@ export interface GameResult {
   highlight: boolean;
   clutch: boolean;
   narrative: string;
+  // populated only for close playoff games in rounds 2+ (final 2 minutes)
+  playByPlay?: PlayByPlayBeat[];
+}
+
+/**
+ * One beat of the final-two-minutes play-by-play. The UI plays these in
+ * sequence with ~1s pauses. A possession is usually two beats: a "setup"
+ * beat (the shot description) and a "result" beat (made/missed + score).
+ * Free throws emit one beat per shot.
+ */
+export interface PlayByPlayBeat {
+  clock: string;          // "1:48" style game clock
+  teamAbbr: string;       // team on this possession
+  text: string;           // play description
+  kind: 'setup' | 'make' | 'miss' | 'ft' | 'final';
+  homeScore: number;      // score AFTER this beat resolves
+  awayScore: number;
+}
+
+export interface PlayoffGame {
+  result: GameResult | null;   // null until simulated
+  played: boolean;
 }
 
 export interface PlayoffSeries {
+  id: string;
   round: number;
   highSeedId: string;
   lowSeedId: string;
+  highSeed: number;            // seed number 1-8
+  lowSeed: number;
   highWins: number;
   lowWins: number;
   winnerId: string | null;
-  games: GameResult[];
+  games: PlayoffGame[];        // best-of-3: up to 3 slots
 }
 
 // ─── Season stat aggregation ───
@@ -181,6 +210,35 @@ export interface HistoryEntry {
 }
 
 // ─── Champion archive (per completed season) ───
+// ─── Awards (shown first thing in the offseason) ───
+export interface AwardWinner {
+  playerId: string;
+  playerName: string;
+  teamLabel: string;
+  rarity: Rarity;
+  detail: string;          // e.g. "28.4 PPG" or position
+}
+export interface AwardsReport {
+  season: number;
+  championLabel: string;
+  championId: string;
+  mvp: AwardWinner | null;
+  rookieOfYear: AwardWinner | null;
+  allStarFive: AwardWinner[];   // one per position PG/SG/SF/PF/C
+}
+
+// ─── A single trade or release done in the cap-reconciliation step ───
+export interface TradeRecord {
+  kind: 'trade' | 'release';
+  teamALabel: string;
+  teamBLabel: string;         // for 'release', the FA pool
+  playerOut: string;          // player leaving team A
+  playerOutRarity: Rarity;
+  playerIn: string;           // player joining team A ('' for a pure release)
+  playerInRarity: Rarity | null;
+  reason: string;
+}
+
 export interface SeasonArchive {
   season: number;
   championId: string;
@@ -199,6 +257,7 @@ export interface OffseasonReport {
   draftPicks: { pick: number; teamLabel: string; playerName: string; rarity: Rarity }[];
   signings: { playerName: string; rarity: Rarity; toTeamLabel: string; years: number }[];
   nonRenewals: { playerName: string; rarity: Rarity; fromTeamLabel: string; reason: string }[];
+  trades: TradeRecord[];
 }
 
 // ─── Full league state ───
@@ -218,13 +277,20 @@ export interface LeagueState {
   records: LeagueRecords;
   history: HistoryEntry[];
   archive: SeasonArchive[];
+  awardsHistory: AwardsReport[];
   newsFeed: string[];
   lastOffseason: OffseasonReport | null;
+  lastAwards: AwardsReport | null;
 }
 
 // ─── Tuning constants ───
 export const WEEKS_REGULAR = 14;
 export const ROUND_NAMES = ['', 'First Round', 'Conf. Semifinals', 'Conf. Finals', 'Finals', 'Champion'];
+
+// Games needed to WIN a series, by round (best-of: 3, 5, 5, 7).
+// Index 1 = First Round ... index 4 = Finals.
+export const WINS_NEEDED = [0, 2, 3, 3, 4];
+export const SERIES_LENGTH = [0, 3, 5, 5, 7];
 
 // target population shape (~105 players)
 export const POP_TARGET = 105;

@@ -1,6 +1,6 @@
 import type { Player, Team, LeagueState } from '../engine/types';
 import {
-  teamScoreWith, teamBaseQuality, teamRarityBonus, teamStars, teamLabel, supportPenalty,
+  teamScoreWith, teamRawScore, teamStars, teamLabel, rarityPoints, supportPoints,
 } from '../engine/league';
 import { RarityChip, MarketTag, StatLine, AttrBar, ContractBadge, Modal } from './components';
 
@@ -46,6 +46,26 @@ export function PlayerModal({ player, state, onClose }: { player: Player; state:
         <StatLine k="MVPs" v={c.mvps} />
       </div>
 
+      {(c.mvps > 0 || c.allStarSelections > 0 || c.rookieOfYear || c.championships > 0) && (
+        <>
+          <div className="section-title">Honors</div>
+          <div className="honor-row">
+            {c.championships > 0 && (
+              <span className="honor-badge champ">🏆 {c.championships}× Champion</span>
+            )}
+            {c.mvps > 0 && (
+              <span className="honor-badge mvp">★ {c.mvps}× MVP</span>
+            )}
+            {c.rookieOfYear && (
+              <span className="honor-badge roy">Rookie of the Year</span>
+            )}
+            {c.allStarSelections > 0 && (
+              <span className="honor-badge allstar">{c.allStarSelections}× All-Star Five</span>
+            )}
+          </div>
+        </>
+      )}
+
       {player.seasonLog.length > 0 && (
         <>
           <div className="section-title">Season History</div>
@@ -80,9 +100,8 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
 }) {
   const stars = teamStars(team, state.players);
   const score = teamScoreWith(team, state.players);
-  const base = teamBaseQuality(team, state.players);
-  const bonus = teamRarityBonus(team, state.players);
-  const pen = supportPenalty(team.supportCore);
+  const raw = teamRawScore(team, state.players);
+  const overCap = raw > team.maxPoints;
 
   return (
     <Modal title={teamLabel(team)} onClose={onClose}>
@@ -127,13 +146,27 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
       <div className="muted-cond">{team.coach.offense} / {team.coach.defense}</div>
       <StatLine k={`GM · ${team.gm.name}`} v={team.gm.rarity} />
 
-      <div className="section-title">Rating Breakdown</div>
-      <StatLine k="Base quality (stars' OVR)" v={base.toFixed(1)} />
-      <StatLine k="Rarity bonus layer" v={bonus >= 0 ? `+${bonus}` : bonus} />
-      <StatLine k={`Support core (${team.supportCore})`} v={`penalty -${pen}`} />
-      <StatLine k="Team max cap" v={team.maxPoints} />
+      <div className="section-title">Score Breakdown</div>
+      {stars.map((s, i) => (
+        <StatLine
+          key={s.id}
+          k={`${i === 0 ? 'Franchise star' : `Star ${i + 1}`} · ${s.name} (${s.rarity})`}
+          v={`+${rarityPoints(s.rarity)}`}
+        />
+      ))}
+      <StatLine k={`Coach · ${team.coach.rarity}`} v={`+${rarityPoints(team.coach.rarity)}`} />
+      <StatLine k={`GM · ${team.gm.rarity}`} v={`+${rarityPoints(team.gm.rarity)}`} />
+      <StatLine k={`Support core (${team.supportCore})`} v={`+${supportPoints(team.supportCore)}`} />
+      <div className="divider" />
+      <StatLine k="Total spend" v={raw} />
+      <StatLine k="Team cap" v={team.maxPoints} />
       <div className="divider" />
       <StatLine k="Effective rating" v={score} />
+      {overCap && (
+        <div className="muted-cond" style={{ color: 'var(--flame)', marginTop: 4 }}>
+          Spend exceeds cap by {raw - team.maxPoints} — rating is clamped to {team.maxPoints}.
+        </div>
+      )}
 
       <div className="section-title">Franchise</div>
       <StatLine k="Record" v={`${team.wins}-${team.losses}`} />

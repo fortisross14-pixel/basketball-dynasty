@@ -1,16 +1,24 @@
-import type { LeagueState, Team } from '../engine/types';
-import { ROUND_NAMES } from '../engine/types';
+import { useState, useEffect, useRef } from 'react';
+import type { LeagueState, Team, PlayoffSeries, GameResult, PlayByPlayBeat } from '../engine/types';
+import { ROUND_NAMES, SERIES_LENGTH } from '../engine/types';
 import { teamLabel } from '../engine/league';
-import { RarityChip } from './components';
+import { nextGameIndex } from '../engine/season';
+import { Modal } from './components';
 
-// ─── Playoffs ───
-export function PlayoffsScreen({ state, onTeam }: { state: LeagueState; onTeam: (t: Team) => void }) {
+export function PlayoffsScreen({ state, onTeam, onSimGame }: {
+  state: LeagueState;
+  onTeam: (t: Team) => void;
+  onSimGame: (seriesId: string) => void;
+}) {
+  const [openSeriesId, setOpenSeriesId] = useState<string | null>(null);
+
   const byId = new Map(state.teams.map((t) => [t.id, t]));
   if (!state.playoffBracket) {
     return <div className="panel"><div className="empty">The playoffs begin after the regular season. Keep advancing.</div></div>;
   }
   const rounds = [...new Set(state.playoffBracket.map((s) => s.round))].sort((a, b) => a - b);
   const champ = state.champion ? byId.get(state.champion) : null;
+  const openSeries = state.playoffBracket.find((s) => s.id === openSeriesId) ?? null;
 
   return (
     <div>
@@ -20,176 +28,228 @@ export function PlayoffsScreen({ state, onTeam }: { state: LeagueState; onTeam: 
           <div className="champ-team">{teamLabel(champ)}</div>
         </div>
       )}
+
       {rounds.map((rd) => (
         <div key={rd} className="panel">
           <div className="panel-head"><h3>{ROUND_NAMES[rd] ?? `Round ${rd}`}</h3></div>
           <div className="panel-body">
-            {state.playoffBracket!.filter((s) => s.round === rd).map((s, i) => {
-              const hi = byId.get(s.highSeedId)!;
-              const lo = byId.get(s.lowSeedId)!;
-              return (
-                <div key={i} className="series-row">
-                  <span className={`series-team ${s.winnerId === hi.id ? 'winner' : ''}`}
-                        onClick={() => onTeam(hi)}>
-                    {hi.abbr} {hi.name}
-                  </span>
-                  <span className="series-score num">{s.highWins} – {s.lowWins}</span>
-                  <span className={`series-team right ${s.winnerId === lo.id ? 'winner' : ''}`}
-                        onClick={() => onTeam(lo)}>
-                    {lo.name} {lo.abbr}
-                  </span>
-                </div>
-              );
-            })}
+            <div className="bracket-grid">
+              {state.playoffBracket!.filter((s) => s.round === rd).map((s) => {
+                const hi = byId.get(s.highSeedId)!;
+                const lo = byId.get(s.lowSeedId)!;
+                const done = s.winnerId !== null;
+                const started = s.games.some((g) => g.played);
+                return (
+                  <div key={s.id} className={`series-card ${done ? 'done' : ''}`}
+                       onClick={() => setOpenSeriesId(s.id)}>
+                    <div className={`series-line ${s.winnerId === hi.id ? 'winner' : ''}`}>
+                      <span className="seed">{s.highSeed}</span>
+                      <span className="series-abbr">{hi.abbr}</span>
+                      <span className="series-w">{s.highWins}</span>
+                    </div>
+                    <div className={`series-line ${s.winnerId === lo.id ? 'winner' : ''}`}>
+                      <span className="seed">{s.lowSeed}</span>
+                      <span className="series-abbr">{lo.abbr}</span>
+                      <span className="series-w">{s.lowWins}</span>
+                    </div>
+                    <div className="series-status">
+                      {done ? 'Series over' : started ? 'In progress' : 'Click to play'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       ))}
+
+      {openSeries && (
+        <SeriesModal
+          series={openSeries}
+          state={state}
+          onClose={() => setOpenSeriesId(null)}
+          onSimGame={onSimGame}
+          onTeam={onTeam}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Offseason report ───
-export function OffseasonScreen({ state }: { state: LeagueState }) {
-  const r = state.lastOffseason;
-  if (!r) {
-    return <div className="panel"><div className="empty">No offseason has been processed yet.</div></div>;
-  }
+// ─── series popup: game 1 / 2 / 3, simulate one at a time ───
+function SeriesModal({ series, state, onClose, onSimGame, onTeam }: {
+  series: PlayoffSeries;
+  state: LeagueState;
+  onClose: () => void;
+  onSimGame: (id: string) => void;
+  onTeam: (t: Team) => void;
+}) {
+  const byId = new Map(state.teams.map((t) => [t.id, t]));
+  const high = byId.get(series.highSeedId)!;
+  const low = byId.get(series.lowSeedId)!;
+  const next = nextGameIndex(series);
+
+  const [pbpGame, setPbpGame] = useState<GameResult | null>(null);
+  const prevPlayed = useRef(series.games.filter((g) => g.played).length);
+
+  useEffect(() => {
+    const playedCount = series.games.filter((g) => g.played).length;
+    if (playedCount > prevPlayed.current) {
+      const newest = [...series.games].reverse().find((g) => g.played);
+      if (newest?.result?.playByPlay && newest.result.playByPlay.length > 0) {
+        setPbpGame(newest.result);
+      }
+    }
+    prevPlayed.current = playedCount;
+  }, [series.games]);
+
+  const roundName = ROUND_NAMES[series.round] ?? `Round ${series.round}`;
+  const seriesLen = SERIES_LENGTH[series.round] ?? 3;
+  // higher seed hosts odd-numbered games (game index 0,2,4,6)
+  const homeForGame = (gi: number) => (gi % 2 === 0 ? high : low);
+  const awayForGame = (gi: number) => (gi % 2 === 0 ? low : high);
+
   return (
-    <div>
-      <div className="panel">
-        <div className="panel-head"><h2>{r.season} <span className="accent">Offseason Report</span></h2></div>
-        <div className="panel-body">
-          <p className="muted-cond">
-            Processed in order: retirements → team max-points reroll → support-core updates →
-            draft → free agency.
-          </p>
+    <Modal title={roundName} onClose={onClose}>
+      <div className="series-head">
+        <button className="series-team-btn" onClick={() => onTeam(high)}>
+          <span className="seed-lg">{series.highSeed}</span> {teamLabel(high)}
+        </button>
+        <span className="series-vs">{series.highWins} – {series.lowWins}</span>
+        <button className="series-team-btn right" onClick={() => onTeam(low)}>
+          {teamLabel(low)} <span className="seed-lg">{series.lowSeed}</span>
+        </button>
+      </div>
+      {series.winnerId && (
+        <div className="series-result-banner">
+          {teamLabel(byId.get(series.winnerId)!)} win the series
+        </div>
+      )}
+
+      <div className="section-title">Games (Best of {seriesLen})</div>
+      {series.games.map((g, gi) => {
+        // hide game slots that will never be needed (series already decided)
+        if (series.winnerId && !g.played) return null;
+        const home = homeForGame(gi);
+        const away = awayForGame(gi);
+        const isNext = gi === next;
+        return (
+          <div key={gi} className="game-row">
+            <div className="game-label">Game {gi + 1}</div>
+            {g.played && g.result ? (
+              <div className="game-score-wrap">
+                <span className="game-score">
+                  {away.abbr} {sideScore(g.result, away.id)} — {sideScore(g.result, home.id)} {home.abbr}
+                </span>
+                {g.result.playByPlay && (
+                  <button className="btn-ghost btn-sm" onClick={() => setPbpGame(g.result!)}>
+                    Replay Final 2:00
+                  </button>
+                )}
+              </div>
+            ) : isNext ? (
+              <button className="btn-advance btn-sm" onClick={() => onSimGame(series.id)}>
+                Simulate Game {gi + 1}
+              </button>
+            ) : (
+              <span className="game-pending">—</span>
+            )}
+          </div>
+        );
+      })}
+
+      {!series.winnerId && next >= 0 && (
+        <p className="hint" style={{ marginTop: 10 }}>
+          {series.round >= 2
+            ? 'Close games (within 5) show a live final-two-minutes play-by-play.'
+            : 'First-round games show the final score only.'}
+        </p>
+      )}
+
+      {pbpGame && pbpGame.playByPlay && (
+        <PlayByPlayViewer
+          beats={pbpGame.playByPlay}
+          home={byId.get(pbpGame.homeId)!}
+          away={byId.get(pbpGame.awayId)!}
+          onClose={() => setPbpGame(null)}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function sideScore(r: GameResult, teamId: string): number {
+  return r.homeId === teamId ? r.homeScore : r.awayScore;
+}
+
+// ─── auto-playing final-2:00 play-by-play viewer ───
+function PlayByPlayViewer({ beats, home, away, onClose }: {
+  beats: PlayByPlayBeat[];
+  home: Team;
+  away: Team;
+  onClose: () => void;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [done, setDone] = useState(false);
+  const timer = useRef<number | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (done) return;
+    if (idx >= beats.length - 1) { setDone(true); return; }
+    timer.current = window.setTimeout(() => setIdx((i) => i + 1), 1050);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [idx, done, beats.length]);
+
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [idx]);
+
+  const skip = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setIdx(beats.length - 1);
+    setDone(true);
+  };
+
+  const beat = beats[idx];
+  const visible = beats.slice(0, idx + 1);
+
+  return (
+    <div className="pbp-overlay" onClick={(e) => e.stopPropagation()}>
+      <div className="pbp-box">
+        <div className="pbp-scoreboard">
+          <div className="pbp-team">
+            <div className="pbp-abbr">{away.abbr}</div>
+            <div className="pbp-pts">{beat.awayScore}</div>
+          </div>
+          <div className="pbp-clock">
+            <div className="pbp-clock-time">{beat.clock}</div>
+            <div className="pbp-clock-lbl">4TH QTR</div>
+          </div>
+          <div className="pbp-team">
+            <div className="pbp-abbr">{home.abbr}</div>
+            <div className="pbp-pts">{beat.homeScore}</div>
+          </div>
+        </div>
+
+        <div className="pbp-feed" ref={feedRef}>
+          {visible.map((b, i) => (
+            <div key={i} className={`pbp-beat k-${b.kind} ${i === idx ? 'current' : ''}`}>
+              <span className="pbp-beat-clock">{b.clock}</span>
+              <span className="pbp-beat-team">{b.teamAbbr}</span>
+              <span className="pbp-beat-text">{b.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="pbp-controls">
+          {!done ? (
+            <button className="btn-ghost btn-sm" onClick={skip}>Skip to Final</button>
+          ) : (
+            <button className="btn-advance btn-sm" onClick={onClose}>Close</button>
+          )}
         </div>
       </div>
-
-      <ReportSection title={`Retirements (${r.retirements.length})`}>
-        {r.retirements.length === 0 ? <Empty text="No retirements." /> : (
-          <table>
-            <thead><tr><th>Player</th><th>Rarity</th><th>Last Team</th><th>Seasons</th></tr></thead>
-            <tbody>
-              {r.retirements.map((x, i) => (
-                <tr key={i}>
-                  <td>{x.name}</td>
-                  <td><RarityChip rarity={x.rarity} /></td>
-                  <td className="muted">{x.teamLabel}</td>
-                  <td className="num">{x.seasons}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
-
-      <ReportSection title={`Team Max-Points Changes (${r.capChanges.length})`}>
-        {r.capChanges.length === 0 ? <Empty text="No cap changes." /> : (
-          <table>
-            <thead><tr><th>Team</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
-            <tbody>
-              {[...r.capChanges].sort((a, b) => b.delta - a.delta).map((x, i) => (
-                <tr key={i}>
-                  <td>{x.teamLabel}</td>
-                  <td className="num">{x.before}</td>
-                  <td className="num">{x.after}</td>
-                  <td className={`num ${x.delta > 0 ? 'up' : 'down'}`}>
-                    {x.delta > 0 ? `▲ +${x.delta}` : `▼ ${x.delta}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
-
-      <ReportSection title={`Support-Core Updates (${r.supportChanges.length})`}>
-        {r.supportChanges.length === 0 ? <Empty text="No support-core changes." /> : (
-          <table>
-            <thead><tr><th>Team</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
-            <tbody>
-              {[...r.supportChanges].sort((a, b) => (b.after - b.before) - (a.after - a.before)).map((x, i) => {
-                const d = x.after - x.before;
-                return (
-                  <tr key={i}>
-                    <td>{x.teamLabel}</td>
-                    <td className="num">{x.before}</td>
-                    <td className="num">{x.after}</td>
-                    <td className={`num ${d > 0 ? 'up' : 'down'}`}>{d > 0 ? `▲ +${d}` : `▼ ${d}`}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
-
-      <ReportSection title={`Draft (${r.draftPicks.length} picks)`}>
-        {r.draftPicks.length === 0 ? <Empty text="No draft picks — full rosters." /> : (
-          <table>
-            <thead><tr><th>Pick</th><th>Team</th><th>Player</th><th>Rarity</th></tr></thead>
-            <tbody>
-              {r.draftPicks.map((x) => (
-                <tr key={x.pick}>
-                  <td className="accent-val">#{x.pick}</td>
-                  <td>{x.teamLabel}</td>
-                  <td>{x.playerName}</td>
-                  <td><RarityChip rarity={x.rarity} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
-
-      <ReportSection title={`Free-Agent Signings (${r.signings.length})`}>
-        {r.signings.length === 0 ? <Empty text="No signings." /> : (
-          <table>
-            <thead><tr><th>Player</th><th>Rarity</th><th>Signed With</th><th>Years</th></tr></thead>
-            <tbody>
-              {r.signings.map((x, i) => (
-                <tr key={i}>
-                  <td>{x.playerName}</td>
-                  <td><RarityChip rarity={x.rarity} /></td>
-                  <td>{x.toTeamLabel}</td>
-                  <td className="num">{x.years}y</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
-
-      <ReportSection title={`Players Who Left Their Team (${r.nonRenewals.length})`}>
-        {r.nonRenewals.length === 0 ? <Empty text="Everyone re-signed." /> : (
-          <table>
-            <thead><tr><th>Player</th><th>Rarity</th><th>Former Team</th><th>Reason</th></tr></thead>
-            <tbody>
-              {r.nonRenewals.map((x, i) => (
-                <tr key={i}>
-                  <td>{x.playerName}</td>
-                  <td><RarityChip rarity={x.rarity} /></td>
-                  <td className="muted">{x.fromTeamLabel}</td>
-                  <td className="muted-cond">{x.reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </ReportSection>
     </div>
   );
-}
-
-function ReportSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="panel">
-      <div className="panel-head"><h3>{title}</h3></div>
-      <div className="panel-body table-wrap">{children}</div>
-    </div>
-  );
-}
-function Empty({ text }: { text: string }) {
-  return <div className="empty-sm">{text}</div>;
 }

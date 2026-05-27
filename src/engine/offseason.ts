@@ -2,9 +2,9 @@
 import type {
   LeagueState, Team, Player, OffseasonReport, HistoryEntry, Rarity,
 } from './types';
-import { POP_TARGET, RARITY_TARGETS, RARITY_ORDER } from './types';
+import { POP_TARGET, RARITY_TARGETS, RARITY_ORDER, RARITY_VALUE } from './types';
 import {
-  teamScoreWith, teamStars, teamLabel,
+  teamStars, teamLabel, nonStarSpend,
 } from './league';
 import {
   renewalProbability, teamWantsToKeep, offerLength, nonRenewalReason,
@@ -12,6 +12,8 @@ import {
 import { genPlayerOfRarity } from '../data/generators';
 import { RELOCATION_CITIES, MARKET_BASE } from '../data/teamSeeds';
 import { randInt, rng, chance, pick, shuffle, gaussian, clamp } from './rng';
+import { computeAwards, applyAwardsToCareers } from './awards';
+import { reconcileCaps } from './trades';
 
 // ─── age-curve progression applied to every active player ───
 function progress(p: Player) {
@@ -69,36 +71,34 @@ export function runOffseason(state: LeagueState): LeagueState {
 
   const report: OffseasonReport = {
     season, retirements: [], capChanges: [], supportChanges: [],
-    draftPicks: [], signings: [], nonRenewals: [],
+    draftPicks: [], signings: [], nonRenewals: [], trades: [],
   };
 
-  // ── 0. log the completed season into player logs + crown MVP ──
+  // ── AWARDS — computed first, on the just-finished season, before any
+  //    roster changes so retiring players can still win ──
+  const awards = computeAwards(state);
+  // write MVP / ROY / All-Star honors onto permanent career totals
+  applyAwardsToCareers(awards, players);
+
+  // ── 0. log the completed season into player logs ──
   const allActive = Object.values(players).filter((p) => !p.retired);
   for (const p of allActive) logSeason(p, state);
 
-  // MVP = best scorer among rostered players this season
-  let mvp: Player | null = null;
-  let mvpScore = -1;
-  for (const p of allActive) {
-    const line = state.seasonStats[p.id];
-    if (!line || line.games === 0) continue;
-    const score = line.points + line.assists * 1.5 + line.rebounds * 1.2;
-    if (score > mvpScore) { mvpScore = score; mvp = p; }
-  }
+  // mark the MVP's season log + add a history line (MVP comes from awards)
+  const mvp = awards.mvp ? players[awards.mvp.playerId] ?? null : null;
   if (mvp) {
-    mvp.career.mvps++;
     const lastLog = mvp.seasonLog[mvp.seasonLog.length - 1];
     if (lastLog && lastLog.season === season) lastLog.mvp = true;
-    const mvpTeam = teamById.get(mvp.teamId ?? '');
     history.push({
       season, kind: 'mvp',
-      text: `${mvp.name} (${mvpTeam ? teamLabel(mvpTeam) : 'FA'}) named Season MVP.`,
+      text: `${awards.mvp!.playerName} (${awards.mvp!.teamLabel}) named Season MVP.`,
     });
   }
 
   // champion archive entry
   const champTeam = state.champion ? teamById.get(state.champion) : null;
   let archive = [...state.archive];
+  const awardsHistory = [...state.awardsHistory, awards];
   if (champTeam) {
     // find runner-up from final bracket
     let runnerLabel = '—';
@@ -248,18 +248,31 @@ export function runOffseason(state: LeagueState): LeagueState {
   const draftingTeams = teams
     .filter((t) => t.starIds.length < 3)
     .sort((a, b) => a.wins - b.wins);
+
+  // remaining STAR budget for a team: cap minus non-star spend minus
+  // rarity points of stars already signed. A team can only draft/sign a
+  // player whose rarity points fit this budget. Common (+0) always fits,
+  // so a cap-strapped team can always still fill its slots.
+  const starBudgetLeft = (t: Team): number => {
+    const onRoster = teamStars(t, players)
+      .reduce((sum, p) => sum + RARITY_VALUE[p.rarity], 0);
+    return t.maxPoints - nonStarSpend(t) - onRoster;
+  };
+
   // best prospects first
   const prospectQueue = [...draftClass].sort((a, b) => b.potential - a.potential);
   let pickNo = 1;
-  let qi = 0;
   // teams may need multiple picks; loop until all slots filled or class exhausted
   let progressMade = true;
-  while (qi < prospectQueue.length && progressMade) {
+  while (prospectQueue.length > 0 && progressMade) {
     progressMade = false;
     for (const t of draftingTeams) {
       if (t.starIds.length >= 3) continue;
-      const prospect = prospectQueue[qi++];
-      if (!prospect) break;
+      const budget = Math.max(0, starBudgetLeft(t));
+      // pick the best prospect the team can actually afford
+      const idx = prospectQueue.findIndex((p) => RARITY_VALUE[p.rarity] <= budget);
+      const prospect = idx >= 0 ? prospectQueue.splice(idx, 1)[0] : null;
+      if (!prospect) continue;
       prospect.teamId = t.id;
       prospect.contractYears = offerLength(prospect);
       prospect.contractLeft = prospect.contractYears;
@@ -271,8 +284,7 @@ export function runOffseason(state: LeagueState): LeagueState {
     }
   }
   // any undrafted prospects → free agency
-  for (; qi < prospectQueue.length; qi++) {
-    const p = prospectQueue[qi];
+  for (const p of prospectQueue) {
     if (p.teamId === null) freeAgentIds.push(p.id);
   }
   if (report.draftPicks.length > 0) {
@@ -283,49 +295,70 @@ export function runOffseason(state: LeagueState): LeagueState {
     });
   }
 
-  // ── 6. FREE AGENCY — teams with most unused cap pick first ──
-  // teams still needing stars sign first; among them, most unused cap goes first
+  // ── 6. FREE AGENCY — teams pick within their remaining cap budget ──
+  // Teams that still need stars sign first; among them, the team with the
+  // most remaining STAR budget picks first. A team can only sign a player
+  // whose rarity points fit its budget (Common always fits).
   let faPool = freeAgentIds
     .map((id) => players[id])
     .filter((p) => p && !p.retired) as Player[];
-  faPool.sort((a, b) => b.overall - a.overall);
 
-  // teams that still have empty star slots MUST fill them
-  let needyTeams = teams.filter((t) => t.starIds.length < 3);
-  // sort by unused cap (maxPoints - current rating), descending
-  const unused = (t: Team) => t.maxPoints - teamScoreWith(t, players);
-  needyTeams.sort((a, b) => unused(b) - unused(a));
+  const needyTeams = teams.filter((t) => t.starIds.length < 3);
 
-  for (const t of needyTeams) {
-    while (t.starIds.length < 3 && faPool.length > 0) {
-      const signed = faPool.shift()!;
-      signed.teamId = t.id;
-      signed.contractYears = offerLength(signed);
-      signed.contractLeft = signed.contractYears;
-      t.starIds.push(signed.id);
-      freeAgentIds = freeAgentIds.filter((x) => x !== signed.id);
-      report.signings.push({
-        playerName: signed.name, rarity: signed.rarity,
-        toTeamLabel: teamLabel(t), years: signed.contractYears,
+  // process needy teams repeatedly: each pass, the neediest-budget team signs
+  // the best affordable free agent
+  let faGuard = 0;
+  while (needyTeams.some((t) => t.starIds.length < 3) && faGuard < 200) {
+    faGuard++;
+    const stillNeedy = needyTeams
+      .filter((t) => t.starIds.length < 3)
+      .sort((a, b) => starBudgetLeft(b) - starBudgetLeft(a));
+    const t = stillNeedy[0];
+    if (!t) break;
+    const budget = Math.max(0, starBudgetLeft(t));
+    // best affordable free agent (by overall)
+    faPool.sort((a, b) => b.overall - a.overall);
+    const idx = faPool.findIndex((p) => RARITY_VALUE[p.rarity] <= budget);
+    let signed = idx >= 0 ? faPool.splice(idx, 1)[0] : null;
+    if (!signed) {
+      // pool has nobody affordable — generate a Common filler so the team
+      // can always field 3 stars
+      signed = genPlayerOfRarity('Common', { rookie: false });
+      players[signed.id] = signed;
+    }
+    signed.teamId = t.id;
+    signed.contractYears = offerLength(signed);
+    signed.contractLeft = signed.contractYears;
+    t.starIds.push(signed.id);
+    freeAgentIds = freeAgentIds.filter((x) => x !== signed!.id);
+    report.signings.push({
+      playerName: signed.name, rarity: signed.rarity,
+      toTeamLabel: teamLabel(t), years: signed.contractYears,
+    });
+    if (signed.rarity === 'Epic' || signed.rarity === 'Legend') {
+      history.push({
+        season, kind: 'signing',
+        text: `FREE AGENCY: ${signed.name} (${signed.rarity}) signs with ${teamLabel(t)}.`,
       });
-      if (signed.rarity === 'Epic' || signed.rarity === 'Legend') {
-        history.push({
-          season, kind: 'signing',
-          text: `FREE AGENCY: ${signed.name} (${signed.rarity}) signs with ${teamLabel(t)}.`,
-        });
-      }
     }
   }
 
-  // teams with unused cap may also sign an upgrade (swap out weakest star)
-  const upgraders = shuffle(teams.filter((t) => t.starIds.length === 3 && unused(t) >= 4));
+  // teams with spare budget may upgrade — swap their weakest star for a
+  // better free agent, but only if the new star's rarity fits the budget
+  // freed by releasing the weakest.
+  const upgraders = shuffle(teams.filter((t) => t.starIds.length === 3));
   for (const t of upgraders) {
     if (faPool.length === 0) break;
     const stars = teamStars(t, players);
     const weakest = stars.reduce((w, s) => (s.overall < w.overall ? s : w), stars[0]);
-    const target = faPool[0];
-    if (target && target.overall > weakest.overall + 3) {
-      faPool.shift();
+    // budget available if we release the weakest star
+    const budgetAfterRelease = starBudgetLeft(t) + RARITY_VALUE[weakest.rarity];
+    faPool.sort((a, b) => b.overall - a.overall);
+    const target = faPool.find(
+      (p) => p.overall > weakest.overall + 3 && RARITY_VALUE[p.rarity] <= budgetAfterRelease,
+    );
+    if (target) {
+      faPool = faPool.filter((p) => p.id !== target.id);
       // weakest → free agency
       t.starIds = t.starIds.filter((x) => x !== weakest.id);
       weakest.teamId = null;
@@ -345,7 +378,22 @@ export function runOffseason(state: LeagueState): LeagueState {
     }
   }
 
-  // ── 7. RELOCATION — every 5-6 years, a struggling small-market team moves ──
+  // ── 7. TRADES — cap reconciliation. No team may end over its cap; any
+  //    that does trades a star (or releases one and signs cheaper). ──
+  report.trades = reconcileCaps({ teams, players, freeAgentIds });
+  // reconcileCaps may have repopulated freeAgentIds via release moves
+  freeAgentIds = freeAgentIds.filter((id) => {
+    const p = players[id];
+    return p && !p.retired && p.teamId === null;
+  });
+  // also capture any released players not yet in the list
+  for (const p of Object.values(players)) {
+    if (!p.retired && p.teamId === null && !freeAgentIds.includes(p.id)) {
+      freeAgentIds.push(p.id);
+    }
+  }
+
+  // ── 8. RELOCATION — every 5-6 years, a struggling small-market team moves ──
   const yearsIn = season - 2026;
   if (yearsIn > 0 && yearsIn % randInt(5, 6) === 0 && chance(0.7)) {
     const candidates = teams
@@ -359,6 +407,8 @@ export function runOffseason(state: LeagueState): LeagueState {
       mover.city = dest.city;
       mover.name = dest.name;
       mover.abbr = dest.abbr;
+      mover.primary = dest.primary;
+      mover.secondary = dest.secondary;
       mover.market = dest.market;
       mover.marketValue = MARKET_BASE[dest.market];
       mover.maxPoints = mover.marketValue + mover.randomValue;
@@ -402,7 +452,9 @@ export function runOffseason(state: LeagueState): LeagueState {
     records: state.records,
     history,
     archive,
+    awardsHistory,
     newsFeed: news,
     lastOffseason: report,
+    lastAwards: awards,
   };
 }

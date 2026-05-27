@@ -2,15 +2,19 @@
 import type { Team, Player, Rarity } from './types';
 import { RARITY_VALUE } from './types';
 
-export function supportPenalty(core: number): number {
-  if (core <= 55) return 3;
-  if (core <= 65) return 2;
-  if (core <= 70) return 1;
+// ─── Support-core points: tiered by the 49-72 rating ───
+// 70+ → +4, 65-69 → +3, 60-64 → +2, 55-59 → +1, below 55 → 0
+export function supportPoints(core: number): number {
+  if (core >= 70) return 4;
+  if (core >= 65) return 3;
+  if (core >= 60) return 2;
+  if (core >= 55) return 1;
   return 0;
 }
 
+// rarity → points: Common 0, Uncommon 1, Rare 2, Epic 3, Legend 4
 export function rarityPoints(rarity: Rarity): number {
-  return rarity === 'Legend' ? 4 : RARITY_VALUE[rarity];
+  return RARITY_VALUE[rarity];
 }
 
 // resolve a team's 3 star Player objects from the league player map
@@ -19,38 +23,34 @@ export function teamStars(team: Team, players: Record<string, Player>): Player[]
 }
 
 /**
- * Base quality from the three stars' overall ratings (0..~10 scale).
- * Franchise star (starIds[0]) is weighted heaviest.
+ * A team's score is the SUM of its parts — every piece competes for the same
+ * budget, and the total cannot exceed the team's maxPoints cap:
+ *
+ *   franchise star + star2 + star3 + coach + GM + support points
+ *
+ * Each star/coach/GM contributes its rarity points (0-4); the support core
+ * contributes 0-4 by tier. The raw sum is the team's "spend"; the score is
+ * that sum clamped to the cap.
  */
-export function teamBaseQuality(team: Team, players: Record<string, Player>): number {
+export function teamRawScore(team: Team, players: Record<string, Player>): number {
   const s = teamStars(team, players);
-  if (s.length < 3) return 0;
-  const avg = s[0].overall * 0.5 + s[1].overall * 0.3 + s[2].overall * 0.2;
-  return (avg - 55) / 4.4;
+  const starPts = s.reduce((sum, p) => sum + rarityPoints(p.rarity), 0);
+  return starPts
+    + rarityPoints(team.coach.rarity)
+    + rarityPoints(team.gm.rarity)
+    + supportPoints(team.supportCore);
 }
 
-/**
- * Rarity bonus layer (the design spec):
- *  - franchise star: rarity value (Legend = +4)
- *  - stars 2+3 + GM: rarity values, combined and capped at +2
- *  - coach: rarity value (Legend = +4)
- *  - minus tiered support-core penalty
- */
-export function teamRarityBonus(team: Team, players: Record<string, Player>): number {
-  const s = teamStars(team, players);
-  if (s.length < 3) return 0;
-  const franchise = rarityPoints(s[0].rarity);
-  const coach = rarityPoints(team.coach.rarity);
-  const trioRaw =
-    RARITY_VALUE[s[1].rarity] + RARITY_VALUE[s[2].rarity] + RARITY_VALUE[team.gm.rarity];
-  const trio = Math.min(2, trioRaw);
-  return franchise + coach + trio - supportPenalty(team.supportCore);
-}
-
-/** Effective team rating, clamped to the team's maxPoints cap. */
+/** Effective team rating — the raw rarity sum, clamped to the cap. */
 export function teamScoreWith(team: Team, players: Record<string, Player>): number {
-  const raw = teamBaseQuality(team, players) + teamRarityBonus(team, players);
-  return Math.max(0, Math.min(team.maxPoints, Math.round(raw)));
+  return Math.min(team.maxPoints, teamRawScore(team, players));
+}
+
+/** Cap room left to spend: maxPoints minus everything except the 3 stars. */
+export function nonStarSpend(team: Team): number {
+  return rarityPoints(team.coach.rarity)
+    + rarityPoints(team.gm.rarity)
+    + supportPoints(team.supportCore);
 }
 
 // convenience wrapper used where a global player map is in scope via closure

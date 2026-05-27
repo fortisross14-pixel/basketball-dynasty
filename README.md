@@ -36,19 +36,31 @@ Progress **autosaves to the active slot after every advance**. You can also
 **Export** a save to a JSON file and **Import** it later.
 
 ### The league
-- 32 teams across 2 conferences and 8 divisions.
+- 32 teams: the 30 real NBA franchises plus 2 expansion teams (Montreal,
+  Seattle SuperSonics), 16 per conference.
 - Each team has **exactly 3 named stars** plus a **support core** — a single
   49–72 rating representing the rest of the roster (no names, no stats).
 - ~105 tracked players exist at any time: 96 rostered stars + ~9 free agents.
   The free-agent pool swells when contracts expire, then shrinks as teams sign.
 
 ### Team rating
-A team's effective rating combines:
-- **Base quality** from the 3 stars' overall ratings (franchise star weighted heaviest)
-- **Rarity bonus**: franchise-star rarity + coach rarity + a capped bonus from
-  the other two stars and the GM, minus a support-core penalty
-- Clamped to the team's **max-points cap** (market value + a random 8–12 that
-  rerolls every offseason)
+A team's score is the **sum of its parts** — every piece competes for the same
+budget:
+
+    franchise star + star 2 + star 3 + coach + GM + support core
+
+Each star, coach, and GM contributes its **rarity points** (Common 0, Uncommon
+1, Rare 2, Epic 3, Legend 4). The support core contributes 0-4 by tier (70+ → 4,
+65-69 → 3, 60-64 → 2, 55-59 → 1, below 55 → 0).
+
+The total cannot exceed the team's **max-points cap** (market tier 1/2/3 plus a
+random 8-12, so caps run 9-15, rerolled every offseason). This forces real
+tradeoffs: a team that signs a Legend (+4), an Epic coach (+3) and has a strong
+support core (+3) has only a few points left for its other two stars. A roster
+of three Legends is impossible to fully field.
+
+Free agency and the draft respect each team's **remaining budget** — a team can
+only sign a player whose rarity points fit the cap room it has left.
 
 ### Contracts & careers
 - Each star has a **9–14 season career** (also bounded by age).
@@ -59,20 +71,39 @@ A team's effective rating combines:
   to spend its cap room on an upgrade.
 
 ### Offseason (in order)
-1. **Retirement** — players at the end of their careers
-2. **Max-points reroll** — the random component of each team's cap changes
-3. **Support-core update** — shifts on a normal distribution (−5..+5), clamped 49–72
-4. **Draft** — new stars enter to refill the pool toward ~105; worst records pick first
-5. **Free agency** — teams with the most unused cap space sign first
+1. **Awards** — Champion, MVP, Rookie of the Year, and All-Star Starting Five
+2. **Retirement** — players at the end of their careers
+3. **Max-points reroll** — the random component of each team's cap changes
+4. **Support-core update** — shifts on a normal distribution (−5..+5), clamped 49–72
+5. **Draft** — new stars enter to refill the pool toward ~105; worst records pick first
+6. **Free agency** — teams with the most unused cap space sign first
+7. **Trades** — cap reconciliation: no team may finish over its cap, so
+   over-cap teams trade a star (or release one and sign cheaper) until legal
 
 Every offseason produces a full report you can review on the Offseason tab.
+
+### Playoffs
+The playoffs are an 8-seed bracket per conference (First Round → Conference
+Semifinals → Conference Finals → Finals). Series lengths scale by round: First Round best-of-3, Conference
+Semifinals and Conference Finals best-of-5, Finals best-of-7.
+
+Click any series in the Playoffs tab to open it, then simulate each game one at a time (best-of-3, 5, or 7 depending on the round). From the Conference Semifinals onward, any game
+decided by **5 points or fewer** opens a live **final-two-minutes play-by-play**:
+the game clock counts down, possessions play out one beat at a time (~1 second
+each), free throws are shown shot by shot, and the score ticks up live. You can
+let it auto-play or hit **Skip to Final**. First-round games show only the final
+score.
+
+The main Advance button is locked during a playoff round until every series in
+that round has a winner — then it builds the next round.
 
 ## Tabs
 - **Standings** — by conference or by division
 - **Teams** — filterable/sortable cards; click for full team detail
 - **Stars** — sortable table of every active star; click for career detail
 - **Stats** — season per-game leaders and all-time records/career boards
-- **Playoffs** — live bracket
+- **Playoffs** — interactive bracket; click any series to play it
+- **Awards** — the season's Champion, MVP, Rookie of the Year, All-Star Five
 - **Offseason** — the most recent offseason report
 
 ## Architecture
@@ -88,6 +119,7 @@ src/
     contracts.ts    renewal probability & contract offers
     setup.ts        initial league construction
     simulation.ts   single-game simulation
+    playbyplay.ts   final-2:00 play-by-play generator
     season.ts       weekly sim + playoffs
     offseason.ts    full offseason pipeline
   data/     the "database" — teams & player generation

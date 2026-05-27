@@ -27,7 +27,7 @@ function pressure(team: Team, opp: Team, players: Record<string, Player>): numbe
   const advantage = off - def;
   const moraleSwing = (team.morale - 65) * 0.15;
   const capRating = teamScoreWith(team, players);
-  return 55 + advantage * 0.9 + moraleSwing + capRating * 1.6 + gaussian(0, 6);
+  return 55 + advantage * 0.9 + moraleSwing + capRating * 0.85 + gaussian(0, 6);
 }
 
 function distributeBox(

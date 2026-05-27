@@ -1,10 +1,11 @@
 // ═══ Initial league construction: 32 teams + ~105-player population ═══
 import type { Team, Player, LeagueState, LeagueRecords } from './types';
-import { RARITY_TARGETS, RARITY_ORDER } from './types';
+import { RARITY_TARGETS, RARITY_ORDER, RARITY_VALUE } from './types';
 import { TEAM_SEEDS, MARKET_BASE } from '../data/teamSeeds';
 import { genPlayerOfRarity, genCoach, genGM } from '../data/generators';
 import { genId, randInt, shuffle } from './rng';
 import { offerLength } from './contracts';
+import { nonStarSpend } from './league';
 
 function emptyRecords(): LeagueRecords {
   return {
@@ -54,6 +55,8 @@ export function createLeague(): LeagueState {
       city: seed.city,
       name: seed.name,
       abbr: seed.abbr,
+      primary: seed.primary,
+      secondary: seed.secondary,
       conference: seed.conference,
       division: seed.division,
       market: seed.market,
@@ -74,18 +77,32 @@ export function createLeague(): LeagueState {
     teams.push(team);
   });
 
-  // distribute stars: snake draft over byOverall so talent spreads evenly
-  let order = teams.map((_, i) => i);
-  let pickIdx = 0;
+  // distribute stars via a snake draft, but each team can only take a player
+  // whose rarity points fit its remaining cap budget (Common always fits).
+  const order = teams.map((_, i) => i);
+  const remainingPool = [...byOverall];
+  const starBudget = (t: Team): number => {
+    const onRoster = t.starIds
+      .map((id) => players[id])
+      .reduce((sum, p) => sum + RARITY_VALUE[p.rarity], 0);
+    return t.maxPoints - nonStarSpend(t) - onRoster;
+  };
   for (let round = 0; round < 3; round++) {
     const roundOrder = round % 2 === 0 ? order : [...order].reverse();
     for (const ti of roundOrder) {
-      const p = byOverall[pickIdx++];
+      const t = teams[ti];
+      if (t.starIds.length >= 3) continue;
+      const budget = Math.max(0, starBudget(t));
+      // best affordable player
+      let idx = remainingPool.findIndex((p) => RARITY_VALUE[p.rarity] <= budget);
+      // if nothing affordable (shouldn't happen — Common is +0), take the last
+      if (idx < 0) idx = remainingPool.length - 1;
+      const p = remainingPool.splice(idx, 1)[0];
       if (!p) continue;
-      p.teamId = teams[ti].id;
+      p.teamId = t.id;
       p.contractYears = offerLength(p);
-      p.contractLeft = randInt(1, p.contractYears); // staggered so contracts don't all expire together
-      teams[ti].starIds.push(p.id);
+      p.contractLeft = randInt(1, p.contractYears); // staggered expirations
+      t.starIds.push(p.id);
     }
   }
 
@@ -110,7 +127,9 @@ export function createLeague(): LeagueState {
       { season: START_SEASON, kind: 'milestone', text: 'A new basketball era tips off. 32 franchises chase the first dynasty.' },
     ],
     archive: [],
+    awardsHistory: [],
     newsFeed: [],
     lastOffseason: null,
+    lastAwards: null,
   };
 }

@@ -31,12 +31,13 @@ const ARCHETYPES: Archetype[] = [
 const OFFENSES = ['Fast Break', 'Perimeter Heavy', 'Motion Offense', 'Isolation', 'Post-Centric', 'Balanced'];
 const DEFENSES = ['Paint Protection', 'Perimeter Pressure', 'Switching', 'Aggressive Trapping', 'Conservative', 'Balanced'];
 
+// Star overall ranges by rarity (per design spec).
 const RARITY_OVERALL: Record<Rarity, [number, number]> = {
-  Common: [54, 68],
-  Uncommon: [64, 76],
-  Rare: [73, 84],
-  Epic: [83, 91],
-  Legend: [91, 99],
+  Common: [65, 72],
+  Uncommon: [72, 78],
+  Rare: [79, 84],
+  Epic: [85, 90],
+  Legend: [90, 99],
 };
 
 function statsFor(archetype: Archetype, overall: number): Stats {
@@ -62,6 +63,7 @@ function emptyCareer() {
   return {
     games: 0, points: 0, rebounds: 0, assists: 0, blocks: 0, steals: 0,
     threes: 0, tripleDoubles: 0, championships: 0, mvps: 0, buzzerBeaters: 0,
+    allStarSelections: 0, rookieOfYear: false,
   };
 }
 

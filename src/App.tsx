@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { LeagueState, Team, Player } from './engine/types';
 import { WEEKS_REGULAR } from './engine/types';
 import { createLeague } from './engine/setup';
-import { simulateWeek, simulatePlayoffRound } from './engine/season';
+import { simulateWeek, simulatePlayoffGame, advancePlayoffRound, currentRoundComplete } from './engine/season';
 import { runOffseason } from './engine/offseason';
 import { saveSlot, loadSlot, deleteSlot, exportState, importState } from './state/saves';
 import { HomeScreen } from './ui/HomeScreen';
@@ -10,16 +10,19 @@ import { StandingsScreen } from './ui/StandingsScreen';
 import { TeamsScreen } from './ui/TeamsScreen';
 import { StarsScreen } from './ui/StarsScreen';
 import { StatsScreen } from './ui/StatsScreen';
-import { PlayoffsScreen, OffseasonScreen } from './ui/PlayoffsScreen';
+import { PlayoffsScreen } from './ui/PlayoffsScreen';
+import { OffseasonScreen } from './ui/OffseasonScreen';
+import { AwardsScreen } from './ui/AwardsScreen';
 import { PlayerModal, TeamModal } from './ui/modals';
 
-type Tab = 'standings' | 'teams' | 'stars' | 'stats' | 'playoffs' | 'offseason';
+type Tab = 'standings' | 'teams' | 'stars' | 'stats' | 'playoffs' | 'awards' | 'offseason';
 const TABS: [Tab, string][] = [
   ['standings', 'Standings'],
   ['teams', 'Teams'],
   ['stars', 'Stars'],
   ['stats', 'Stats'],
   ['playoffs', 'Playoffs'],
+  ['awards', 'Awards'],
   ['offseason', 'Offseason'],
 ];
 
@@ -57,16 +60,21 @@ export default function App() {
     setState((s) => {
       if (!s) return s;
       if (s.phase === 'regular') return simulateWeek(s);
-      if (s.phase === 'playoffs') return simulatePlayoffRound(s);
+      if (s.phase === 'playoffs') return advancePlayoffRound(s);
       return runOffseason(s);
     });
+  }, []);
+
+  // simulate a single playoff game within a series (driven by the Playoffs tab)
+  const simGame = useCallback((seriesId: string) => {
+    setState((s) => (s ? simulatePlayoffGame(s, seriesId) : s));
   }, []);
 
   // jump to playoffs/offseason tab automatically when phase shifts
   useEffect(() => {
     if (!state) return;
     if (state.phase === 'playoffs' && tab === 'standings') setTab('playoffs');
-    if (state.phase === 'offseason') setTab('offseason');
+    if (state.phase === 'offseason') setTab('awards');
   }, [state?.phase]);
 
   function doExport() {
@@ -96,11 +104,13 @@ export default function App() {
     return <HomeScreen onNew={startNew} onLoad={loadExisting} onDelete={deleteSlot} />;
   }
 
+  const playoffsRoundDone = state.phase === 'playoffs' && currentRoundComplete(state);
   const advanceLabel = state.phase === 'regular'
     ? `Sim Week ${Math.min(state.week, WEEKS_REGULAR)}`
     : state.phase === 'playoffs'
-      ? 'Sim Playoff Round'
+      ? (playoffsRoundDone ? 'Advance Playoff Round →' : 'Finish Series in Playoffs Tab')
       : 'Run Offseason → Next Season';
+  const advanceDisabled = state.phase === 'playoffs' && !playoffsRoundDone;
 
   return (
     <div className="app">
@@ -132,7 +142,13 @@ export default function App() {
       </div>
 
       <div className="advance-bar">
-        <button className="btn-advance" onClick={advance}>{advanceLabel}</button>
+        <button
+          className="btn-advance"
+          onClick={advance}
+          disabled={advanceDisabled}
+        >
+          {advanceLabel}
+        </button>
         <button className="btn-ghost" onClick={doExport}>Export Save</button>
         <label className="btn-ghost import-label">
           Import Save
@@ -153,7 +169,8 @@ export default function App() {
       {tab === 'teams' && <TeamsScreen state={state} onTeam={setModalTeam} />}
       {tab === 'stars' && <StarsScreen state={state} onPlayer={setModalPlayer} />}
       {tab === 'stats' && <StatsScreen state={state} onPlayer={setModalPlayer} />}
-      {tab === 'playoffs' && <PlayoffsScreen state={state} onTeam={setModalTeam} />}
+      {tab === 'playoffs' && <PlayoffsScreen state={state} onTeam={setModalTeam} onSimGame={simGame} />}
+      {tab === 'awards' && <AwardsScreen state={state} onPlayer={setModalPlayer} />}
       {tab === 'offseason' && <OffseasonScreen state={state} />}
 
       {modalTeam && (

@@ -109,23 +109,38 @@ function HistoricalStats({ state, onPlayer }: { state: LeagueState; onPlayer: (p
         <CareerBoard title="Championships" players={careerLeaders.titles} stat={(p) => p.career.championships} onPlayer={onPlayer} />
       </div>
 
-      {state.archive.length > 0 && (
+      {state.awardsHistory.length > 0 && (
         <div className="panel">
-          <div className="panel-head"><h3>Champions by Season</h3></div>
+          <div className="panel-head"><h3>Awards by Season</h3></div>
           <div className="panel-body table-wrap">
-            <table>
-              <thead><tr><th>Season</th><th>Champion</th><th>Runner-Up</th><th>MVP</th></tr></thead>
+            <table className="awards-table">
+              <thead>
+                <tr>
+                  <th>Season</th><th>Champion</th><th>MVP</th><th>Rookie</th>
+                  <th>PG</th><th>SG</th><th>SF</th><th>PF</th><th>C</th>
+                </tr>
+              </thead>
               <tbody>
-                {[...state.archive].reverse().map((a) => (
-                  <tr key={a.season}>
-                    <td className="accent-val">{a.season}</td>
-                    <td>🏆 {a.championLabel}</td>
-                    <td className="muted">{a.runnerUpLabel}</td>
-                    <td>{a.mvpName} <span className="muted">({a.mvpTeamLabel})</span></td>
-                  </tr>
-                ))}
+                {[...state.awardsHistory].reverse().map((a) => {
+                  const five = (pos: string) =>
+                    a.allStarFive.find((w) => w.detail === pos)?.playerName ?? '—';
+                  return (
+                    <tr key={a.season}>
+                      <td className="accent-val">{a.season}</td>
+                      <td>🏆 {a.championLabel}</td>
+                      <td>{a.mvp ? a.mvp.playerName : '—'}</td>
+                      <td>{a.rookieOfYear ? a.rookieOfYear.playerName : '—'}</td>
+                      <td className="muted">{five('PG')}</td>
+                      <td className="muted">{five('SG')}</td>
+                      <td className="muted">{five('SF')}</td>
+                      <td className="muted">{five('PF')}</td>
+                      <td className="muted">{five('C')}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <div className="hint">Every season's Champion, MVP, Rookie of the Year, and All-Star Starting Five.</div>
           </div>
         </div>
       )}

@@ -45,7 +45,15 @@ export function TeamsScreen({ state, onTeam }: { state: LeagueState; onTeam: (t:
         {teams.map((t) => {
           const score = teamScoreWith(t, state.players);
           return (
-            <div key={t.id} className="team-card" onClick={() => onTeam(t)}>
+            <div
+              key={t.id}
+              className="team-card"
+              onClick={() => onTeam(t)}
+              style={{
+                ['--team-primary' as string]: t.primary,
+                ['--team-secondary' as string]: t.secondary,
+              }}
+            >
               <div className="tc-top">
                 <span className="tc-abbr">{t.abbr}</span>
                 <MarketTag market={t.market} />
