@@ -1,6 +1,7 @@
 import type { Player, Team, LeagueState } from '../engine/types';
 import {
-  teamScoreWith, teamStars, teamLabel, franchisePlayer,
+  teamScoreWith, teamRawScore, teamStars, teamLabel, franchisePlayer,
+  rarityPoints, supportPoints,
 } from '../engine/league';
 import { RarityChip, MarketTag, StatLine, AttrBar, ContractBadge, Modal } from './components';
 import { Flag } from './Flag';
@@ -168,13 +169,48 @@ export function TeamModal({ team, state, onClose, onPlayer, onStaff }: {
 
       <div className="cap-wrap">
         <div className="cap-head">
-          <span>RATING {score}</span>
-          <span>CAP {team.maxPoints}</span>
+          <span>TEAM RATING {score}</span>
+          <span className="muted-cond">cap {team.maxPoints}</span>
         </div>
-        <div className="cap-bar">
-          <div className="cap-fill" style={{ width: `${(score / team.maxPoints) * 100}%` }} />
+        <div className="rating-bar">
+          <div className="rating-fill" style={{ width: `${Math.min(100, (score / 15) * 100)}%` }} />
         </div>
       </div>
+
+      <SectionTitle>Rating Detail</SectionTitle>
+      {(() => {
+        const ranked = [...stars].sort((a, b) => {
+          if (fp && a.id === fp.id) return -1;
+          if (fp && b.id === fp.id) return 1;
+          return b.overall - a.overall;
+        });
+        const raw = teamRawScore(team, state.players);
+        const clamped = raw > team.maxPoints;
+        return (
+          <>
+            {ranked.map((s, i) => (
+              <StatLine
+                key={s.id}
+                k={`${i === 0 ? 'Franchise star' : `Star ${i + 1}`} · ${s.name} (${s.rarity})`}
+                v={`+${rarityPoints(s.rarity)}`}
+              />
+            ))}
+            <StatLine k={`Coach · ${team.coach.name} (${team.coach.rarity})`}
+              v={`+${rarityPoints(team.coach.rarity)}`} />
+            <StatLine k={`GM · ${team.gm.name} (${team.gm.rarity})`}
+              v={`+${rarityPoints(team.gm.rarity)}`} />
+            <StatLine k={`Support core (${team.supportCore})`}
+              v={`+${supportPoints(team.supportCore)}`} />
+            <div className="divider" />
+            <StatLine k="Total" v={raw} />
+            {clamped && (
+              <div className="muted-cond" style={{ color: 'var(--flame)', marginTop: 4 }}>
+                Exceeds the cap of {team.maxPoints} — rating is capped at {team.maxPoints}.
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       <SectionTitle>Starting Stars</SectionTitle>
       {stars.map((s) => (

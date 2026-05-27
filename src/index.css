@@ -664,3 +664,17 @@ tbody tr:hover td { background: rgba(255,255,255,0.025); }
   border-radius: 1px;
   flex-shrink: 0;
 }
+
+/* ═══ TEAM QUALITY RATING BAR ═══ */
+/* fills on a league-wide scale (0..15) so good teams visibly read fuller;
+   fill color is set inline by quality tier */
+.rating-bar {
+  height: 9px; background: var(--court); border: 1px solid var(--line);
+  margin-top: 2px; overflow: hidden;
+}
+.rating-fill { height: 100%; }
+.tc-tier {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  margin-top: 4px; text-align: right;
+}

@@ -44,6 +44,19 @@ export function TeamsScreen({ state, onTeam }: { state: LeagueState; onTeam: (t:
       <div className="card-grid">
         {teams.map((t) => {
           const score = teamScoreWith(t, state.players);
+          // quality on a league-wide scale (effective ratings run ~6-15)
+          const RATING_MAX = 15;
+          const pct = Math.min(100, (score / RATING_MAX) * 100);
+          const tier = score >= 13 ? 'Contender'
+            : score >= 11 ? 'Strong'
+            : score >= 9 ? 'Solid'
+            : score >= 7 ? 'Middling'
+            : 'Rebuilding';
+          const tierColor = score >= 13 ? '#3fcf8e'
+            : score >= 11 ? '#7ec98f'
+            : score >= 9 ? '#e8b04a'
+            : score >= 7 ? '#e8843a'
+            : '#e23b3b';
           return (
             <div
               key={t.id}
@@ -74,9 +87,11 @@ export function TeamsScreen({ state, onTeam }: { state: LeagueState; onTeam: (t:
                   <span className="tc-stat-lbl">Titles</span>
                 </div>
               </div>
-              <div className="cap-bar">
-                <div className="cap-fill" style={{ width: `${(score / t.maxPoints) * 100}%` }} />
+              <div className="rating-bar">
+                <div className="rating-fill"
+                  style={{ width: `${pct}%`, background: tierColor }} />
               </div>
+              <div className="tc-tier" style={{ color: tierColor }}>{tier}</div>
             </div>
           );
         })}

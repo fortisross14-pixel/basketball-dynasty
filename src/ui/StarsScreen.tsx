@@ -4,7 +4,7 @@ import type { LeagueState, Player } from '../engine/types';
 import { RarityChip, ContractBadge } from './components';
 import { Flag } from './Flag';
 
-type SortKey = 'overall' | 'twoP' | 'threeP' | 'physical' | 'passing' | 'defense' | 'age';
+type SortKey = 'overall' | 'twoP' | 'threeP' | 'physical' | 'passing' | 'defense' | 'age' | 'career';
 
 export function StarsScreen({ state, onPlayer }: { state: LeagueState; onPlayer: (p: Player) => void }) {
   const [sort, setSort] = useState<SortKey>('overall');
@@ -27,6 +27,7 @@ export function StarsScreen({ state, onPlayer }: { state: LeagueState; onPlayer:
     list.sort((a, b) => {
       if (sort === 'overall') return b.overall - a.overall;
       if (sort === 'age') return a.age - b.age;
+      if (sort === 'career') return b.seasonsPlayed - a.seasonsPlayed;
       return b.stats[sort] - a.stats[sort];
     });
     return list;
@@ -40,7 +41,8 @@ export function StarsScreen({ state, onPlayer }: { state: LeagueState; onPlayer:
 
   const cols: [SortKey, string][] = [
     ['overall', 'OVR'], ['twoP', '2PT'], ['threeP', '3PT'],
-    ['physical', 'PHY'], ['passing', 'PAS'], ['defense', 'DEF'], ['age', 'AGE'],
+    ['physical', 'PHY'], ['passing', 'PAS'], ['defense', 'DEF'],
+    ['age', 'AGE'], ['career', 'YR'],
   ];
 
   return (
@@ -90,6 +92,7 @@ export function StarsScreen({ state, onPlayer }: { state: LeagueState; onPlayer:
                   <td className="num">{p.stats.passing}</td>
                   <td className="num">{p.stats.defense}</td>
                   <td className="num">{p.age}</td>
+                  <td className="num">{p.seasonsPlayed} of {p.careerLength}</td>
                   <td><ContractBadge p={p} /></td>
                 </tr>
               ))}
