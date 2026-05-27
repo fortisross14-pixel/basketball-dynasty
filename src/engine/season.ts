@@ -270,7 +270,7 @@ export function advancePlayoffRound(state: LeagueState): LeagueState {
     champ.titles++;
     for (const id of champ.starIds) {
       const p = players[id];
-      if (p) p.career.championships++;
+      if (p) { p.career.championships++; p.career.titleYears.push(state.season); }
     }
     const history = [...state.history, {
       season: state.season, kind: 'champion' as const,

@@ -618,3 +618,40 @@ tbody tr:hover td { background: rgba(255,255,255,0.025); }
 /* awards-history table — compact */
 .awards-table td, .awards-table th { font-size: 13px; padding: 5px 7px; }
 .awards-table td:nth-child(2) { white-space: nowrap; }
+
+/* ═══ HONOR CARDS (player modal) ═══ */
+.honor-card-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px;
+}
+.honor-card {
+  background: var(--court-2); border: 1px solid var(--line);
+  border-top: 3px solid var(--flame); padding: 10px; text-align: center;
+}
+.honor-card.champ { border-top-color: var(--gold); }
+.honor-card.mvp { border-top-color: var(--flame); }
+.honor-card.allstar { border-top-color: var(--hardwood); }
+.honor-card.roy { border-top-color: var(--green); }
+.hc-label {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 11px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim);
+}
+.hc-count {
+  font-family: 'Bebas Neue', sans-serif; font-size: 38px; line-height: 1; color: var(--net);
+}
+.hc-seasons {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 11px; color: var(--dim);
+}
+
+/* team-colored section titles in the team modal */
+.team-section-title {
+  padding: 4px 10px; border-bottom: none;
+  color: #fff;
+}
+.modal-head-themed h2 { padding-left: 6px; }
+
+/* play-by-play tap hint */
+.pbp-tap-hint {
+  text-align: center; font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--dim); padding: 6px 0 2px;
+}

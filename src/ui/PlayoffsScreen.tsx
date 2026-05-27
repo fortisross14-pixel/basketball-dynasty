@@ -182,7 +182,7 @@ function sideScore(r: GameResult, teamId: string): number {
   return r.homeId === teamId ? r.homeScore : r.awayScore;
 }
 
-// ─── auto-playing final-2:00 play-by-play viewer ───
+// ─── final-2:00 play-by-play viewer: 2s auto-advance, tap to skip ahead ───
 function PlayByPlayViewer({ beats, home, away, onClose }: {
   beats: PlayByPlayBeat[];
   home: Team;
@@ -197,13 +197,21 @@ function PlayByPlayViewer({ beats, home, away, onClose }: {
   useEffect(() => {
     if (done) return;
     if (idx >= beats.length - 1) { setDone(true); return; }
-    timer.current = window.setTimeout(() => setIdx((i) => i + 1), 1050);
+    timer.current = window.setTimeout(() => setIdx((i) => i + 1), 2000);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [idx, done, beats.length]);
 
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [idx]);
+
+  // tap anywhere in the viewer to advance one beat immediately
+  const advanceOne = () => {
+    if (done) return;
+    if (timer.current) clearTimeout(timer.current);
+    if (idx >= beats.length - 1) { setDone(true); return; }
+    setIdx((i) => i + 1);
+  };
 
   const skip = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -232,7 +240,9 @@ function PlayByPlayViewer({ beats, home, away, onClose }: {
           </div>
         </div>
 
-        <div className="pbp-feed" ref={feedRef}>
+        {/* tapping the feed advances one beat */}
+        <div className="pbp-feed" ref={feedRef} onClick={advanceOne}
+             style={{ cursor: done ? 'default' : 'pointer' }}>
           {visible.map((b, i) => (
             <div key={i} className={`pbp-beat k-${b.kind} ${i === idx ? 'current' : ''}`}>
               <span className="pbp-beat-clock">{b.clock}</span>
@@ -240,11 +250,12 @@ function PlayByPlayViewer({ beats, home, away, onClose }: {
               <span className="pbp-beat-text">{b.text}</span>
             </div>
           ))}
+          {!done && <div className="pbp-tap-hint">tap to advance · auto-plays every 2s</div>}
         </div>
 
         <div className="pbp-controls">
           {!done ? (
-            <button className="btn-ghost btn-sm" onClick={skip}>Skip to Final</button>
+            <button className="btn-advance btn-sm" onClick={skip}>Skip to Final</button>
           ) : (
             <button className="btn-advance btn-sm" onClick={onClose}>Close</button>
           )}

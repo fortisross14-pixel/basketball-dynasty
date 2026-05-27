@@ -1,6 +1,6 @@
 import type { Player, Team, LeagueState } from '../engine/types';
 import {
-  teamScoreWith, teamRawScore, teamStars, teamLabel, rarityPoints, supportPoints,
+  teamScoreWith, teamStars, teamLabel,
 } from '../engine/league';
 import { RarityChip, MarketTag, StatLine, AttrBar, ContractBadge, Modal } from './components';
 
@@ -46,46 +46,81 @@ export function PlayerModal({ player, state, onClose }: { player: Player; state:
         <StatLine k="MVPs" v={c.mvps} />
       </div>
 
-      {(c.mvps > 0 || c.allStarSelections > 0 || c.rookieOfYear || c.championships > 0) && (
-        <>
-          <div className="section-title">Honors</div>
-          <div className="honor-row">
-            {c.championships > 0 && (
-              <span className="honor-badge champ">🏆 {c.championships}× Champion</span>
-            )}
-            {c.mvps > 0 && (
-              <span className="honor-badge mvp">★ {c.mvps}× MVP</span>
-            )}
-            {c.rookieOfYear && (
-              <span className="honor-badge roy">Rookie of the Year</span>
-            )}
-            {c.allStarSelections > 0 && (
-              <span className="honor-badge allstar">{c.allStarSelections}× All-Star Five</span>
-            )}
-          </div>
-        </>
-      )}
+      {(c.mvps > 0 || c.allStarSelections > 0 || c.rookieOfYear || c.championships > 0) && (() => {
+        // career-relative season number: year minus the player's first season
+        const firstYear = player.seasonLog.length > 0
+          ? player.seasonLog[0].season
+          : Math.min(
+              ...[...c.titleYears, ...c.mvpYears, ...c.allStarYears, 9999],
+            );
+        const rel = (years: number[]) =>
+          years.map((y) => y - firstYear + 1).sort((a, b) => a - b).join(', ');
+        return (
+          <>
+            <div className="section-title">Honors</div>
+            <div className="honor-card-grid">
+              {c.championships > 0 && (
+                <div className="honor-card champ">
+                  <div className="hc-label">Titles</div>
+                  <div className="hc-count">{c.championships}</div>
+                  <div className="hc-seasons">Seasons {rel(c.titleYears)}</div>
+                </div>
+              )}
+              {c.mvps > 0 && (
+                <div className="honor-card mvp">
+                  <div className="hc-label">MVP</div>
+                  <div className="hc-count">{c.mvps}</div>
+                  <div className="hc-seasons">Seasons {rel(c.mvpYears)}</div>
+                </div>
+              )}
+              {c.allStarSelections > 0 && (
+                <div className="honor-card allstar">
+                  <div className="hc-label">Best 5</div>
+                  <div className="hc-count">{c.allStarSelections}</div>
+                  <div className="hc-seasons">Seasons {rel(c.allStarYears)}</div>
+                </div>
+              )}
+              {c.rookieOfYear && (
+                <div className="honor-card roy">
+                  <div className="hc-label">Rookie of the Year</div>
+                  <div className="hc-count">★</div>
+                  <div className="hc-seasons">Season 1</div>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {player.seasonLog.length > 0 && (
         <>
-          <div className="section-title">Season History</div>
+          <div className="section-title">Season by Season</div>
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Yr</th><th>Team</th><th>G</th><th>PPG</th><th>RPG</th><th>APG</th><th></th></tr>
+                <tr>
+                  <th>Year</th><th>Team</th><th>G</th><th>PPG</th><th>RPG</th>
+                  <th>APG</th><th>SPG</th><th>BPG</th><th>3PG</th><th></th>
+                </tr>
               </thead>
               <tbody>
-                {[...player.seasonLog].reverse().map((sr) => (
-                  <tr key={sr.season}>
-                    <td>{sr.season}</td>
-                    <td className="muted">{sr.teamLabel}</td>
-                    <td className="num">{sr.games}</td>
-                    <td className="num">{sr.games ? (sr.points / sr.games).toFixed(1) : '—'}</td>
-                    <td className="num">{sr.games ? (sr.rebounds / sr.games).toFixed(1) : '—'}</td>
-                    <td className="num">{sr.games ? (sr.assists / sr.games).toFixed(1) : '—'}</td>
-                    <td>{sr.champion ? '🏆' : ''}{sr.mvp ? ' MVP' : ''}</td>
-                  </tr>
-                ))}
+                {[...player.seasonLog].reverse().map((sr) => {
+                  const pg = (n: number) => (sr.games ? (n / sr.games).toFixed(1) : '—');
+                  return (
+                    <tr key={sr.season}>
+                      <td className="accent-val">{sr.season}</td>
+                      <td className="muted">{sr.teamLabel}</td>
+                      <td className="num">{sr.games}</td>
+                      <td className="num">{pg(sr.points)}</td>
+                      <td className="num">{pg(sr.rebounds)}</td>
+                      <td className="num">{pg(sr.assists)}</td>
+                      <td className="num">{pg(sr.steals)}</td>
+                      <td className="num">{pg(sr.blocks)}</td>
+                      <td className="num">{pg(sr.threes)}</td>
+                      <td>{sr.champion ? '🏆' : ''}{sr.mvp ? '★' : ''}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -100,12 +135,24 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
 }) {
   const stars = teamStars(team, state.players);
   const score = teamScoreWith(team, state.players);
-  const raw = teamRawScore(team, state.players);
-  const overCap = raw > team.maxPoints;
+
+  // a section title with the team's primary color as its background bar
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <div
+      className="section-title team-section-title"
+      style={{ background: `linear-gradient(90deg, ${team.primary}, ${team.primary}22 80%, transparent)` }}
+    >
+      {children}
+    </div>
+  );
 
   return (
-    <Modal title={teamLabel(team)} onClose={onClose}>
-      <div className="modal-row">
+    <Modal title={teamLabel(team)} onClose={onClose} accent={team.primary}>
+      <div className="team-stripe" style={{
+        ['--team-primary' as string]: team.primary,
+        ['--team-secondary' as string]: team.secondary,
+      }} />
+      <div className="modal-row" style={{ marginTop: 8 }}>
         <MarketTag market={team.market} />
         <span className="muted-cond">{team.conference} · {team.division}</span>
       </div>
@@ -125,7 +172,7 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
         </div>
       </div>
 
-      <div className="section-title">Starting Stars</div>
+      <SectionTitle>Starting Stars</SectionTitle>
       {stars.map((s, i) => (
         <div key={s.id} className="roster-row" onClick={() => onPlayer(s)}>
           <div>
@@ -141,35 +188,38 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
         </div>
       ))}
 
-      <div className="section-title">Front Office</div>
+      <SectionTitle>Front Office</SectionTitle>
       <StatLine k={`Coach · ${team.coach.name}`} v={team.coach.rarity} />
       <div className="muted-cond">{team.coach.offense} / {team.coach.defense}</div>
       <StatLine k={`GM · ${team.gm.name}`} v={team.gm.rarity} />
 
-      <div className="section-title">Score Breakdown</div>
-      {stars.map((s, i) => (
-        <StatLine
-          key={s.id}
-          k={`${i === 0 ? 'Franchise star' : `Star ${i + 1}`} · ${s.name} (${s.rarity})`}
-          v={`+${rarityPoints(s.rarity)}`}
-        />
-      ))}
-      <StatLine k={`Coach · ${team.coach.rarity}`} v={`+${rarityPoints(team.coach.rarity)}`} />
-      <StatLine k={`GM · ${team.gm.rarity}`} v={`+${rarityPoints(team.gm.rarity)}`} />
-      <StatLine k={`Support core (${team.supportCore})`} v={`+${supportPoints(team.supportCore)}`} />
-      <div className="divider" />
-      <StatLine k="Total spend" v={raw} />
-      <StatLine k="Team cap" v={team.maxPoints} />
-      <div className="divider" />
-      <StatLine k="Effective rating" v={score} />
-      {overCap && (
-        <div className="muted-cond" style={{ color: 'var(--flame)', marginTop: 4 }}>
-          Spend exceeds cap by {raw - team.maxPoints} — rating is clamped to {team.maxPoints}.
+      <SectionTitle>Season by Season</SectionTitle>
+      {team.seasonHistory.length === 0 ? (
+        <div className="empty-sm">No completed seasons yet.</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Year</th><th>Record</th><th>Playoffs</th><th>Franchise Player</th></tr>
+            </thead>
+            <tbody>
+              {[...team.seasonHistory].reverse().map((row) => (
+                <tr key={row.season}>
+                  <td className="accent-val">{row.season}</td>
+                  <td className="num">{row.wins}-{row.losses}</td>
+                  <td className={row.playoffResult === 'Champion' ? 'accent-val' : ''}>
+                    {row.playoffResult === 'Champion' ? '🏆 ' : ''}{row.playoffResult}
+                  </td>
+                  <td className="muted">{row.franchisePlayer}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <div className="section-title">Franchise</div>
-      <StatLine k="Record" v={`${team.wins}-${team.losses}`} />
+      <SectionTitle>Franchise</SectionTitle>
+      <StatLine k="Current Record" v={`${team.wins}-${team.losses}`} />
       <StatLine k="Championships" v={team.titles} />
       <StatLine k="Playoff Appearances" v={team.playoffAppearances} />
       <StatLine k="Morale" v={team.morale} />

@@ -64,6 +64,7 @@ function emptyCareer() {
     games: 0, points: 0, rebounds: 0, assists: 0, blocks: 0, steals: 0,
     threes: 0, tripleDoubles: 0, championships: 0, mvps: 0, buzzerBeaters: 0,
     allStarSelections: 0, rookieOfYear: false,
+    titleYears: [], mvpYears: [], allStarYears: [],
   };
 }
 

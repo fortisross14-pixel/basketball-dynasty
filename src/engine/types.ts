@@ -53,6 +53,10 @@ export interface CareerTotals {
   buzzerBeaters: number;
   allStarSelections: number;   // times named to the All-Star Starting 5
   rookieOfYear: boolean;       // won Rookie of the Year (once, in year 1)
+  // which SEASON each honor was won (calendar year, e.g. 2027)
+  titleYears: number[];
+  mvpYears: number[];
+  allStarYears: number[];
 }
 
 export interface Player {
@@ -120,6 +124,16 @@ export interface Team {
   morale: number;
   lastPlayoffSeason: number | null;
   relocatedFrom?: string;
+  // one row per completed season for the team's history table
+  seasonHistory: TeamSeasonRecord[];
+}
+
+export interface TeamSeasonRecord {
+  season: number;
+  wins: number;
+  losses: number;
+  playoffResult: string;       // 'Champion' | 'Conf. Finals' | 'First Round' | 'DNQ' etc.
+  franchisePlayer: string;     // name of the franchise star that season
 }
 
 // ─── Games & playoffs ───

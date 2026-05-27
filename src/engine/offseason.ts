@@ -122,6 +122,50 @@ export function runOffseason(state: LeagueState): LeagueState {
     }
   }
 
+  // ── record each team's season-history row (before any roster changes) ──
+  // derive how far each team got in the playoffs
+  const playoffFinish = new Map<string, string>();
+  if (state.playoffBracket) {
+    const maxRound = Math.max(...state.playoffBracket.map((s) => s.round));
+    // round-name for the round a team was eliminated in
+    const roundLabel = (r: number): string => {
+      if (r === 1) return 'First Round';
+      if (r === 2) return 'Conf. Semifinals';
+      if (r === 3) return 'Conf. Finals';
+      if (r === 4) return 'Finals';
+      return `Round ${r}`;
+    };
+    for (const series of state.playoffBracket) {
+      // the loser of a series was eliminated in that round
+      const loserId = series.winnerId
+        ? (series.winnerId === series.highSeedId ? series.lowSeedId : series.highSeedId)
+        : null;
+      if (loserId && !playoffFinish.has(loserId)) {
+        playoffFinish.set(loserId, roundLabel(series.round));
+      }
+    }
+    // champion + runner-up overrides
+    if (state.champion) playoffFinish.set(state.champion, 'Champion');
+    const finals = state.playoffBracket.find((s) => s.round === maxRound);
+    if (finals && finals.winnerId) {
+      const runner = finals.winnerId === finals.highSeedId ? finals.lowSeedId : finals.highSeedId;
+      playoffFinish.set(runner, 'Runner-Up');
+    }
+  }
+  for (const t of teams) {
+    const franchiseStar = t.starIds.length > 0 ? players[t.starIds[0]] : null;
+    t.seasonHistory = [
+      ...t.seasonHistory,
+      {
+        season,
+        wins: t.wins,
+        losses: t.losses,
+        playoffResult: playoffFinish.get(t.id) ?? 'DNQ',
+        franchisePlayer: franchiseStar ? franchiseStar.name : '—',
+      },
+    ];
+  }
+
   // ── 1. RETIREMENTS — players whose career length is reached ──
   for (const t of teams) {
     for (const id of [...t.starIds]) {

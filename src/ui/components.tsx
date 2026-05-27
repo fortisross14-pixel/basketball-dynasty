@@ -39,12 +39,19 @@ export function ContractBadge({ p }: { p: Player }) {
   );
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children, accent }: {
+  title: string; onClose: () => void; children: React.ReactNode; accent?: string;
+}) {
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="panel-head">
-          <h2>{title}</h2>
+        <div
+          className="panel-head modal-head-themed"
+          style={accent ? {
+            background: `linear-gradient(90deg, ${accent}cc, ${accent}33 70%, transparent)`,
+          } : undefined}
+        >
+          <h2 style={accent ? { color: '#fff' } : undefined}>{title}</h2>
           <button className="btn-ghost btn-sm" onClick={onClose}>Close</button>
         </div>
         <div className="panel-body">{children}</div>

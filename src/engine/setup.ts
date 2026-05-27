@@ -73,13 +73,17 @@ export function createLeague(): LeagueState {
       playoffAppearances: 0,
       morale: randInt(55, 80),
       lastPlayoffSeason: null,
+      seasonHistory: [],
     };
     teams.push(team);
   });
 
   // distribute stars via a snake draft, but each team can only take a player
   // whose rarity points fit its remaining cap budget (Common always fits).
-  const order = teams.map((_, i) => i);
+  // The team order is SHUFFLED so talent spreads evenly across both
+  // conferences (seed order lists all East then all West — without a shuffle
+  // the best players would all cluster in the East).
+  const order = shuffle(teams.map((_, i) => i));
   const remainingPool = [...byOverall];
   const starBudget = (t: Team): number => {
     const onRoster = t.starIds

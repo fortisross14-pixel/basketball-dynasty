@@ -93,7 +93,7 @@ export function applyAwardsToCareers(
 ): void {
   if (awards.mvp) {
     const p = players[awards.mvp.playerId];
-    if (p) p.career.mvps += 1;
+    if (p) { p.career.mvps += 1; p.career.mvpYears.push(awards.season); }
   }
   if (awards.rookieOfYear) {
     const p = players[awards.rookieOfYear.playerId];
@@ -101,6 +101,6 @@ export function applyAwardsToCareers(
   }
   for (const w of awards.allStarFive) {
     const p = players[w.playerId];
-    if (p) p.career.allStarSelections += 1;
+    if (p) { p.career.allStarSelections += 1; p.career.allStarYears.push(awards.season); }
   }
 }

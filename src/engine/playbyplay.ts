@@ -31,21 +31,28 @@ type Play = 0 | 2 | 3 | 'ft1' | 'ft2' | 'ft3';
 
 /**
  * Decompose a window-point total into a list of scoring plays whose values
- * sum EXACTLY to the total. Uses 3s, 2s and free-throw trips (1/2/3 pts).
+ * sum EXACTLY to the total. Realistic late-game mix: mostly 2s and free
+ * throws, with three-pointers as an occasional swing (~1 in 5 made baskets),
+ * never a barrage.
  */
 function decompose(total: number): Play[] {
   const plays: Play[] = [];
   let r = total;
+  // cap how many 3s a single team's final-2:00 window may contain
+  let threesLeft = total >= 11 ? 2 : 1;
   while (r > 0) {
-    if (r >= 5 && chance(0.45)) { plays.push(3); r -= 3; }
-    else if (r >= 3 && chance(0.5)) {
-      if (chance(0.7)) { plays.push(3); r -= 3; }
-      else { plays.push('ft3'); r -= 3; }
+    if (r >= 3 && threesLeft > 0 && chance(0.2)) {
+      // an occasional three
+      plays.push(3); r -= 3; threesLeft -= 1;
     } else if (r >= 2) {
-      if (chance(0.35)) { plays.push('ft2'); r -= 2; }
+      // a 2 — sometimes from the free-throw line
+      if (chance(0.3)) { plays.push('ft2'); r -= 2; }
       else { plays.push(2); r -= 2; }
-    } else { // r === 1
+    } else if (r === 1) {
       plays.push('ft1'); r -= 1;
+    } else {
+      // r is an odd leftover ≥3 with no threes allowed — take a 2
+      plays.push(2); r -= 2;
     }
   }
   return plays;
