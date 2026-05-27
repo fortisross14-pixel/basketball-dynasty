@@ -4,7 +4,7 @@ import type {
 } from './types';
 import { POP_TARGET, RARITY_TARGETS, RARITY_ORDER, RARITY_VALUE } from './types';
 import {
-  teamStars, teamLabel, nonStarSpend,
+  teamStars, teamLabel, nonStarSpend, franchisePlayer,
 } from './league';
 import {
   renewalProbability, teamWantsToKeep, offerLength, nonRenewalReason,
@@ -14,6 +14,7 @@ import { RELOCATION_CITIES, MARKET_BASE } from '../data/teamSeeds';
 import { randInt, rng, chance, pick, shuffle, gaussian, clamp } from './rng';
 import { computeAwards, applyAwardsToCareers } from './awards';
 import { reconcileCaps } from './trades';
+import { recordStaffSeason, processStaffChanges } from './staff';
 
 // ─── age-curve progression applied to every active player ───
 function progress(p: Player) {
@@ -83,6 +84,13 @@ export function runOffseason(state: LeagueState): LeagueState {
   // ── 0. log the completed season into player logs ──
   const allActive = Object.values(players).filter((p) => !p.retired);
   for (const p of allActive) logSeason(p, state);
+  // every rostered player just completed a season with their team
+  for (const t of teams) {
+    for (const id of t.starIds) {
+      const p = players[id];
+      if (p) p.seasonsWithTeam += 1;
+    }
+  }
 
   // mark the MVP's season log + add a history line (MVP comes from awards)
   const mvp = awards.mvp ? players[awards.mvp.playerId] ?? null : null;
@@ -153,17 +161,29 @@ export function runOffseason(state: LeagueState): LeagueState {
     }
   }
   for (const t of teams) {
-    const franchiseStar = t.starIds.length > 0 ? players[t.starIds[0]] : null;
+    const fp = franchisePlayer(t, players);
+    const finish = playoffFinish.get(t.id) ?? 'DNQ';
     t.seasonHistory = [
       ...t.seasonHistory,
       {
         season,
         wins: t.wins,
         losses: t.losses,
-        playoffResult: playoffFinish.get(t.id) ?? 'DNQ',
-        franchisePlayer: franchiseStar ? franchiseStar.name : '—',
+        playoffResult: finish,
+        franchisePlayer: fp ? fp.name : '—',
       },
     ];
+    // update the coach's & GM's current stint with this season
+    recordStaffSeason(t, finish, state.champion === t.id);
+  }
+  // struggling teams may fire their coach / GM (after stats are recorded)
+  const freeCoaches = [...state.freeCoaches];
+  const freeGMs = [...state.freeGMs];
+  for (const t of teams) {
+    const staffNews = processStaffChanges(t, season, freeCoaches, freeGMs);
+    for (const line of staffNews) {
+      history.push({ season, kind: 'signing', text: line });
+    }
   }
 
   // ── 1. RETIREMENTS — players whose career length is reached ──
@@ -318,6 +338,7 @@ export function runOffseason(state: LeagueState): LeagueState {
       const prospect = idx >= 0 ? prospectQueue.splice(idx, 1)[0] : null;
       if (!prospect) continue;
       prospect.teamId = t.id;
+      prospect.seasonsWithTeam = 0;
       prospect.contractYears = offerLength(prospect);
       prospect.contractLeft = prospect.contractYears;
       t.starIds.push(prospect.id);
@@ -371,6 +392,7 @@ export function runOffseason(state: LeagueState): LeagueState {
       players[signed.id] = signed;
     }
     signed.teamId = t.id;
+    signed.seasonsWithTeam = 0;
     signed.contractYears = offerLength(signed);
     signed.contractLeft = signed.contractYears;
     t.starIds.push(signed.id);
@@ -411,6 +433,7 @@ export function runOffseason(state: LeagueState): LeagueState {
       freeAgentIds.push(weakest.id);
       // target → team
       target.teamId = t.id;
+      target.seasonsWithTeam = 0;
       target.contractYears = offerLength(target);
       target.contractLeft = target.contractYears;
       t.starIds.push(target.id);
@@ -489,6 +512,8 @@ export function runOffseason(state: LeagueState): LeagueState {
     teams,
     players,
     freeAgentIds,
+    freeCoaches,
+    freeGMs,
     results: [],
     seasonStats: {},
     playoffBracket: null,

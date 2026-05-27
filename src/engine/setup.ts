@@ -6,6 +6,7 @@ import { genPlayerOfRarity, genCoach, genGM } from '../data/generators';
 import { genId, randInt, shuffle } from './rng';
 import { offerLength } from './contracts';
 import { nonStarSpend } from './league';
+import { openStint } from './staff';
 
 function emptyRecords(): LeagueRecords {
   return {
@@ -78,6 +79,12 @@ export function createLeague(): LeagueState {
     teams.push(team);
   });
 
+  // open each coach's & GM's first career stint with their team
+  for (const team of teams) {
+    team.coach.history.push(openStint(`${team.city} ${team.name}`, START_SEASON));
+    team.gm.history.push(openStint(`${team.city} ${team.name}`, START_SEASON));
+  }
+
   // distribute stars via a snake draft, but each team can only take a player
   // whose rarity points fit its remaining cap budget (Common always fits).
   // The team order is SHUFFLED so talent spreads evenly across both
@@ -122,6 +129,8 @@ export function createLeague(): LeagueState {
     teams,
     players,
     freeAgentIds,
+    freeCoaches: [],
+    freeGMs: [],
     results: [],
     seasonStats: {},
     playoffBracket: null,

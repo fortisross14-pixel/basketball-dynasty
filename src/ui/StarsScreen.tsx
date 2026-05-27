@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { LeagueState, Player } from '../engine/types';
 
 import { RarityChip, ContractBadge } from './components';
+import { Flag } from './Flag';
 
 type SortKey = 'overall' | 'twoP' | 'threeP' | 'physical' | 'passing' | 'defense' | 'age';
 
@@ -76,7 +77,9 @@ export function StarsScreen({ state, onPlayer }: { state: LeagueState; onPlayer:
             <tbody>
               {stars.map((p) => (
                 <tr key={p.id} onClick={() => onPlayer(p)} style={{ cursor: 'pointer' }}>
-                  <td className="star-name">{p.name}</td>
+                  <td className="star-name">
+                    <Flag abbr={p.nationality.abbr} size={16} /> {p.name}
+                  </td>
                   <td className="muted">{labelOf(p.id)}</td>
                   <td>{p.position}</td>
                   <td><RarityChip rarity={p.rarity} /></td>

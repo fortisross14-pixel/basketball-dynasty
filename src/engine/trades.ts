@@ -115,6 +115,7 @@ export function reconcileCaps(ctx: TradeCtx): TradeRecord[] {
 
     // sign the replacement
     replacement.teamId = overTeam.id;
+    replacement.seasonsWithTeam = 0;
     replacement.contractYears = offerLength(replacement);
     replacement.contractLeft = replacement.contractYears;
     overTeam.starIds.push(replacement.id);
@@ -141,7 +142,9 @@ function swapStars(a: Team, b: Team, fromA: Player, fromB: Player, players: Reco
   a.starIds.push(fromB.id);
   b.starIds.push(fromA.id);
   fromA.teamId = b.id;
+  fromA.seasonsWithTeam = 0;
   fromB.teamId = a.id;
+  fromB.seasonsWithTeam = 0;
   // contracts travel with the player; nothing else changes
   void players;
 }

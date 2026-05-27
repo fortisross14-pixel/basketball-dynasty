@@ -1,5 +1,6 @@
 import type { LeagueState, Player, AwardWinner } from '../engine/types';
 import { RarityChip } from './components';
+import { Flag } from './Flag';
 
 export function AwardsScreen({ state, onPlayer }: {
   state: LeagueState;
@@ -9,6 +10,13 @@ export function AwardsScreen({ state, onPlayer }: {
   if (!a) {
     return <div className="panel"><div className="empty">Awards are presented at the end of each season. Keep advancing.</div></div>;
   }
+
+  // small flag for an award winner, looked up from the live player map
+  const flagFor = (playerId: string) => {
+    const p = state.players[playerId];
+    if (!p) return null;
+    return <><Flag abbr={p.nationality.abbr} size={16} />{' '}</>;
+  };
 
   const open = (w: AwardWinner | null) => {
     if (!w) return;
@@ -28,7 +36,9 @@ export function AwardsScreen({ state, onPlayer }: {
           <div className="award-kind">Most Valuable Player</div>
           {a.mvp ? (
             <>
-              <div className="award-name">{a.mvp.playerName}</div>
+              <div className="award-name">
+                {flagFor(a.mvp.playerId)}{a.mvp.playerName}
+              </div>
               <div className="award-meta">
                 {a.mvp.teamLabel} · <RarityChip rarity={a.mvp.rarity} />
               </div>
@@ -41,7 +51,9 @@ export function AwardsScreen({ state, onPlayer }: {
           <div className="award-kind">Rookie of the Year</div>
           {a.rookieOfYear ? (
             <>
-              <div className="award-name">{a.rookieOfYear.playerName}</div>
+              <div className="award-name">
+                {flagFor(a.rookieOfYear.playerId)}{a.rookieOfYear.playerName}
+              </div>
               <div className="award-meta">
                 {a.rookieOfYear.teamLabel} · <RarityChip rarity={a.rookieOfYear.rarity} />
               </div>
@@ -59,7 +71,7 @@ export function AwardsScreen({ state, onPlayer }: {
               {a.allStarFive.map((w) => (
                 <div key={w.playerId} className="five-slot" onClick={() => open(w)}>
                   <div className="five-pos">{w.detail}</div>
-                  <div className="five-name">{w.playerName}</div>
+                  <div className="five-name">{flagFor(w.playerId)}{w.playerName}</div>
                   <div className="five-team">{w.teamLabel}</div>
                   <RarityChip rarity={w.rarity} />
                 </div>

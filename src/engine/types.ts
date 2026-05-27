@@ -59,9 +59,16 @@ export interface CareerTotals {
   allStarYears: number[];
 }
 
+export interface Nationality {
+  country: string;     // full name, e.g. 'Slovenia'
+  abbr: string;        // 3-letter, e.g. 'SLO'
+  flag: string;        // emoji flag
+}
+
 export interface Player {
   id: string;
   name: string;
+  nationality: Nationality;
   age: number;
   position: Position;
   archetype: Archetype;
@@ -75,6 +82,7 @@ export interface Player {
   // career lifecycle
   careerLength: number;       // 9-14 seasons total
   seasonsPlayed: number;      // counts up; retires when >= careerLength
+  seasonsWithTeam: number;    // consecutive seasons on the current team
   retired: boolean;
   // contract
   contractYears: number;      // total length of current deal (1-5)
@@ -86,17 +94,30 @@ export interface Player {
 }
 
 // ─── Coach & GM ───
+// A staff member's record with one team across a span of seasons.
+export interface StaffStint {
+  teamLabel: string;
+  fromSeason: number;
+  toSeason: number | null;     // null = current/ongoing
+  wins: number;
+  losses: number;
+  titles: number;
+  bestResult: string;          // best playoff finish during the stint
+}
+
 export interface Coach {
   id: string;
   name: string;
   rarity: Rarity;
   offense: string;
   defense: string;
+  history: StaffStint[];
 }
 export interface GM {
   id: string;
   name: string;
   rarity: Rarity;
+  history: StaffStint[];
 }
 
 // ─── Team ───
@@ -284,6 +305,8 @@ export interface LeagueState {
   teams: Team[];
   players: Record<string, Player>;   // ALL players incl. free agents, keyed by id
   freeAgentIds: string[];
+  freeCoaches: Coach[];        // fired coaches available for re-hire
+  freeGMs: GM[];               // fired GMs available for re-hire
   results: GameResult[];
   seasonStats: Record<string, SeasonStatLine>;
   playoffBracket: PlayoffSeries[] | null;

@@ -23,6 +23,25 @@ export function teamStars(team: Team, players: Record<string, Player>): Player[]
 }
 
 /**
+ * The franchise player — the best of a team's three stars, by:
+ *   1. highest rarity
+ *   2. then highest overall rating
+ *   3. then most seasons with the team
+ *   4. then arbitrary (first in list)
+ */
+export function franchisePlayer(team: Team, players: Record<string, Player>): Player | null {
+  const stars = teamStars(team, players);
+  if (stars.length === 0) return null;
+  const ranked = [...stars].sort((a, b) => {
+    const ra = RARITY_VALUE[a.rarity], rb = RARITY_VALUE[b.rarity];
+    if (rb !== ra) return rb - ra;
+    if (b.overall !== a.overall) return b.overall - a.overall;
+    return b.seasonsWithTeam - a.seasonsWithTeam;
+  });
+  return ranked[0];
+}
+
+/**
  * A team's score is the SUM of its parts — every piece competes for the same
  * budget, and the total cannot exceed the team's maxPoints cap:
  *

@@ -1,6 +1,7 @@
 // ═══ Procedural generation of players, coaches, GMs ═══
-import type { Player, Coach, GM, Rarity, Position, Archetype, Stats } from '../engine/types';
+import type { Player, Coach, GM, Rarity, Position, Archetype, Stats, Nationality } from '../engine/types';
 import { genId, randInt, pick, rng, gaussian, clamp } from '../engine/rng';
+import { pickNation } from './nationalities';
 
 const FIRST = [
   'Marcus', 'Theo', 'Darius', 'Leon', 'Andre', 'Trey', 'Malik', 'Jaylen', 'Caleb', 'Devin',
@@ -21,6 +22,13 @@ const LAST = [
 
 export function genName(): string {
   return `${pick(FIRST)} ${pick(LAST)}`;
+}
+
+/** Generate a name + nationality together so the name fits the country. */
+export function genNamedNationality(): { name: string; nationality: Nationality } {
+  const profile = pickNation(rng());
+  const name = `${pick(profile.first)} ${pick(profile.last)}`;
+  return { name, nationality: profile.nat };
 }
 
 const POSITIONS: Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -75,18 +83,26 @@ function emptyCareer() {
 export function genPlayerOfRarity(rarity: Rarity, opts: { age?: number; rookie?: boolean } = {}): Player {
   const [lo, hi] = RARITY_OVERALL[rarity];
   const overall = randInt(lo, hi);
-  const age = opts.age ?? (opts.rookie ? randInt(18, 22) : randInt(20, 29));
   const archetype = pick(ARCHETYPES);
   const stats = statsFor(archetype, overall);
-  const growthRoom = age <= 22 ? randInt(5, 14) : age <= 26 ? randInt(1, 7) : 0;
-  const potential = Math.min(99, overall + growthRoom);
   // 9-14 season careers
   const careerLength = randInt(9, 14);
-  // a rookie starts at 0 seasons; an existing player has some behind them
-  const seasonsPlayed = opts.rookie ? 0 : randInt(0, Math.min(careerLength - 2, Math.max(0, age - 20)));
+  // A rookie starts fresh; an existing player is placed UNIFORMLY anywhere
+  // along their career arc (season 0 .. careerLength-1). This staggering is
+  // essential — without it the whole league bunches up young and nobody
+  // retires for years, then everyone retires at once.
+  const seasonsPlayed = opts.rookie ? 0 : randInt(0, careerLength - 1);
+  // age is derived to stay consistent with career progress: players enter
+  // the league around 19, so age ≈ entry age + seasons played.
+  const entryAge = randInt(19, 22);
+  const age = opts.age ?? (opts.rookie ? entryAge : entryAge + seasonsPlayed);
+  const growthRoom = age <= 22 ? randInt(5, 14) : age <= 26 ? randInt(1, 7) : 0;
+  const potential = Math.min(99, overall + growthRoom);
+  const named = genNamedNationality();
   return {
     id: genId('p'),
-    name: genName(),
+    name: named.name,
+    nationality: named.nationality,
     age,
     position: pick(POSITIONS),
     archetype,
@@ -99,6 +115,7 @@ export function genPlayerOfRarity(rarity: Rarity, opts: { age?: number; rookie?:
     durability: randInt(45, 95),
     careerLength,
     seasonsPlayed,
+    seasonsWithTeam: 0,
     retired: false,
     contractYears: 0,
     contractLeft: 0,
@@ -115,7 +132,10 @@ export function genCoach(): Coach {
   else if (r < 0.2) rarity = 'Epic';
   else if (r < 0.5) rarity = 'Rare';
   else if (r < 0.8) rarity = 'Uncommon';
-  return { id: genId('c'), name: genName(), rarity, offense: pick(OFFENSES), defense: pick(DEFENSES) };
+  return {
+    id: genId('c'), name: genName(), rarity,
+    offense: pick(OFFENSES), defense: pick(DEFENSES), history: [],
+  };
 }
 
 export function genGM(): GM {
@@ -125,5 +145,5 @@ export function genGM(): GM {
   else if (r < 0.18) rarity = 'Epic';
   else if (r < 0.48) rarity = 'Rare';
   else if (r < 0.8) rarity = 'Uncommon';
-  return { id: genId('g'), name: genName(), rarity };
+  return { id: genId('g'), name: genName(), rarity, history: [] };
 }

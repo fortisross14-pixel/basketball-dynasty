@@ -13,7 +13,7 @@ import { StatsScreen } from './ui/StatsScreen';
 import { PlayoffsScreen } from './ui/PlayoffsScreen';
 import { OffseasonScreen } from './ui/OffseasonScreen';
 import { AwardsScreen } from './ui/AwardsScreen';
-import { PlayerModal, TeamModal } from './ui/modals';
+import { PlayerModal, TeamModal, StaffModal } from './ui/modals';
 
 type Tab = 'standings' | 'teams' | 'stars' | 'stats' | 'playoffs' | 'awards' | 'offseason';
 const TABS: [Tab, string][] = [
@@ -32,6 +32,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('standings');
   const [modalTeam, setModalTeam] = useState<Team | null>(null);
   const [modalPlayer, setModalPlayer] = useState<Player | null>(null);
+  const [modalStaff, setModalStaff] = useState<{ kind: 'coach' | 'gm'; team: Team } | null>(null);
 
   // autosave whenever state changes
   useEffect(() => {
@@ -179,6 +180,7 @@ export default function App() {
           state={state}
           onClose={() => setModalTeam(null)}
           onPlayer={(p) => { setModalTeam(null); setModalPlayer(p); }}
+          onStaff={(kind, team) => { setModalTeam(null); setModalStaff({ kind, team }); }}
         />
       )}
       {modalPlayer && (
@@ -186,6 +188,13 @@ export default function App() {
           player={state.players[modalPlayer.id] ?? modalPlayer}
           state={state}
           onClose={() => setModalPlayer(null)}
+        />
+      )}
+      {modalStaff && (
+        <StaffModal
+          kind={modalStaff.kind}
+          team={state.teams.find((t) => t.id === modalStaff.team.id) ?? modalStaff.team}
+          onClose={() => setModalStaff(null)}
         />
       )}
     </div>

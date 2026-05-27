@@ -1,8 +1,9 @@
 import type { Player, Team, LeagueState } from '../engine/types';
 import {
-  teamScoreWith, teamStars, teamLabel,
+  teamScoreWith, teamStars, teamLabel, franchisePlayer,
 } from '../engine/league';
 import { RarityChip, MarketTag, StatLine, AttrBar, ContractBadge, Modal } from './components';
+import { Flag } from './Flag';
 
 export function PlayerModal({ player, state, onClose }: { player: Player; state: LeagueState; onClose: () => void }) {
   const team = state.teams.find((t) => t.id === player.teamId);
@@ -14,12 +15,13 @@ export function PlayerModal({ player, state, onClose }: { player: Player; state:
   return (
     <Modal title={player.name} onClose={onClose}>
       <div className="modal-row">
+        <Flag abbr={player.nationality.abbr} size={22} />
         <RarityChip rarity={player.rarity} />
         <span className="muted-cond">{player.position} · {player.archetype}</span>
         <ContractBadge p={player} />
       </div>
       <div className="muted-cond" style={{ marginTop: 4 }}>
-        {team ? teamLabel(team) : 'Free Agent'} · Age {player.age} · OVR {player.overall} · Potential {player.potential}
+        {player.nationality.country} · {team ? teamLabel(team) : 'Free Agent'} · Age {player.age} · OVR {player.overall} · Potential {player.potential}
       </div>
       <div className="muted-cond">
         Career: season {player.seasonsPlayed} of {player.careerLength}
@@ -130,11 +132,13 @@ export function PlayerModal({ player, state, onClose }: { player: Player; state:
   );
 }
 
-export function TeamModal({ team, state, onClose, onPlayer }: {
+export function TeamModal({ team, state, onClose, onPlayer, onStaff }: {
   team: Team; state: LeagueState; onClose: () => void; onPlayer: (p: Player) => void;
+  onStaff?: (kind: 'coach' | 'gm', team: Team) => void;
 }) {
   const stars = teamStars(team, state.players);
   const score = teamScoreWith(team, state.players);
+  const fp = franchisePlayer(team, state.players);
 
   // a section title with the team's primary color as its background bar
   const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -173,11 +177,12 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
       </div>
 
       <SectionTitle>Starting Stars</SectionTitle>
-      {stars.map((s, i) => (
+      {stars.map((s) => (
         <div key={s.id} className="roster-row" onClick={() => onPlayer(s)}>
           <div>
             <div className="roster-name">
-              {s.name} {i === 0 && <span className="franchise-tag">FRANCHISE</span>}
+              <Flag abbr={s.nationality.abbr} size={16} /> {s.name}
+              {fp && s.id === fp.id && <span className="franchise-tag">FRANCHISE</span>}
             </div>
             <div className="muted-cond">{s.position} · {s.archetype} · Age {s.age} · OVR {s.overall}</div>
           </div>
@@ -189,9 +194,19 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
       ))}
 
       <SectionTitle>Front Office</SectionTitle>
-      <StatLine k={`Coach · ${team.coach.name}`} v={team.coach.rarity} />
-      <div className="muted-cond">{team.coach.offense} / {team.coach.defense}</div>
-      <StatLine k={`GM · ${team.gm.name}`} v={team.gm.rarity} />
+      <div className="roster-row" onClick={() => onStaff && onStaff('coach', team)}>
+        <div>
+          <div className="roster-name">Coach · {team.coach.name}</div>
+          <div className="muted-cond">{team.coach.offense} / {team.coach.defense}</div>
+        </div>
+        <div className="roster-right"><RarityChip rarity={team.coach.rarity} /></div>
+      </div>
+      <div className="roster-row" onClick={() => onStaff && onStaff('gm', team)}>
+        <div>
+          <div className="roster-name">GM · {team.gm.name}</div>
+        </div>
+        <div className="roster-right"><RarityChip rarity={team.gm.rarity} /></div>
+      </div>
 
       <SectionTitle>Season by Season</SectionTitle>
       {team.seasonHistory.length === 0 ? (
@@ -223,6 +238,64 @@ export function TeamModal({ team, state, onClose, onPlayer }: {
       <StatLine k="Championships" v={team.titles} />
       <StatLine k="Playoff Appearances" v={team.playoffAppearances} />
       <StatLine k="Morale" v={team.morale} />
+    </Modal>
+  );
+}
+
+// ─── Coach / GM modal with full career history ───
+export function StaffModal({ kind, team, onClose }: {
+  kind: 'coach' | 'gm';
+  team: Team;
+  onClose: () => void;
+}) {
+  const staff = kind === 'coach' ? team.coach : team.gm;
+  const totalW = staff.history.reduce((n, s) => n + s.wins, 0);
+  const totalL = staff.history.reduce((n, s) => n + s.losses, 0);
+  const totalTitles = staff.history.reduce((n, s) => n + s.titles, 0);
+  const role = kind === 'coach' ? 'Head Coach' : 'General Manager';
+
+  return (
+    <Modal title={staff.name} onClose={onClose}>
+      <div className="modal-row">
+        <RarityChip rarity={staff.rarity} />
+        <span className="muted-cond">{role}</span>
+      </div>
+      {kind === 'coach' && (
+        <div className="muted-cond" style={{ marginTop: 4 }}>
+          {team.coach.offense} / {team.coach.defense}
+        </div>
+      )}
+
+      <div className="section-title">Career</div>
+      <div className="stat-grid">
+        <StatLine k="Teams" v={staff.history.length} />
+        <StatLine k="Record" v={`${totalW}-${totalL}`} />
+        <StatLine k="Championships" v={totalTitles} />
+        <StatLine k="Seasons" v={staff.history.reduce((n, s) =>
+          n + ((s.toSeason ?? s.fromSeason) - s.fromSeason + 1), 0)} />
+      </div>
+
+      <div className="section-title">Coaching History</div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Team</th><th>Years</th><th>Record</th><th>Titles</th><th>Best Finish</th></tr>
+          </thead>
+          <tbody>
+            {[...staff.history].reverse().map((s, i) => (
+              <tr key={i}>
+                <td>{s.teamLabel}</td>
+                <td className="muted">{s.fromSeason}–{s.toSeason ?? 'now'}</td>
+                <td className="num">{s.wins}-{s.losses}</td>
+                <td className="num">{s.titles}</td>
+                <td className={s.bestResult === 'Champion' ? 'accent-val' : 'muted'}>
+                  {s.bestResult === 'Champion' ? '🏆 ' : ''}{s.bestResult}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Modal>
   );
 }
